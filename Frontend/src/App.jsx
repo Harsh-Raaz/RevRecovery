@@ -1,11 +1,15 @@
 import { useState } from "react";
 import "./App.css";
-
+import axios from "axios";
 function App() {
   const [email, setEmail] = useState("");
   const [amount, setAmount] = useState("");
   const [errors, setErrors] = useState({});
+  const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(false);
+const [verified, setVerified] = useState(false);
 
+  
   const validateForm = () => {
     const newErrors = {};
 
@@ -27,7 +31,33 @@ function App() {
 
     return Object.keys(newErrors).length === 0;
   };
+  const handleVerify = async () => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+  if (!emailRegex.test(email)) {
+    setMessage("Please enter a valid email");
+    return;
+  }
+
+  try {
+    setLoading(true);
+    setMessage("");
+
+    const response = await axios.post(
+      "http://localhost:5000/api/auth/send-verification",
+      { email }
+    );
+
+    setMessage(response.data.message);
+  } catch (error) {
+    setMessage(
+      error.response?.data?.message ||
+      "Something went wrong"
+    );
+  } finally {
+    setLoading(false);
+  }
+};
   const handleSubmit = (e) => {
     e.preventDefault();
 
@@ -94,9 +124,15 @@ function App() {
                     }
                   }}
                 />
-                <button>Verify</button>
+                <button
+  type="button"
+  onClick={handleVerify}
+  disabled={loading}
+>
+  {loading ? "Sending..." : "Verify"}
+</button>
               </div>
-
+                  {message && <p>{message}</p>}
               {errors.email && (
                 <span className="error-message">{errors.email}</span>
               )}
