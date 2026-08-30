@@ -74,11 +74,9 @@ const verifyEmail = (req, res) => {
 
         verificationTokens.set(email, data);
 
-        return res.status(200).send(`
-          <h1>Email Verified Successfully</h1>
-          <p>${email}</p>
-          <p>Your email has been verified.</p>
-        `);
+        return res.redirect(
+  `http://localhost:5173/?verified=true&email=${encodeURIComponent(email)}`
+);
       }
     }
 

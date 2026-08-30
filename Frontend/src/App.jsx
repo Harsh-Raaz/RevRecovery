@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState ,useEffect} from "react";
 import "./App.css";
 import axios from "axios";
 function App() {
@@ -9,7 +9,23 @@ function App() {
   const [loading, setLoading] = useState(false);
 const [verified, setVerified] = useState(false);
 
-  
+  useEffect(() => {
+  const params = new URLSearchParams(window.location.search);
+
+  if (params.get("verified") === "true") {
+    setVerified(true);
+    setMessage("Email verified successfully!");
+
+    const verifiedEmail = params.get("email");
+
+    if (verifiedEmail) {
+      setEmail(verifiedEmail);
+    }
+
+    // URL se query parameters hata do
+    window.history.replaceState({}, document.title, "/");
+  }
+}, []);
   const validateForm = () => {
     const newErrors = {};
 
@@ -127,12 +143,20 @@ const [verified, setVerified] = useState(false);
                 <button
   type="button"
   onClick={handleVerify}
-  disabled={loading}
+  disabled={loading || verified}
 >
-  {loading ? "Sending..." : "Verify"}
+  {verified
+    ? "✓ Verified"
+    : loading
+    ? "Sending..."
+    : "Verify"}
 </button>
               </div>
-                  {message && <p>{message}</p>}
+    {message && (
+  <p className={verified ? "success-message" : ""}>
+    {message}
+  </p>
+)}
               {errors.email && (
                 <span className="error-message">{errors.email}</span>
               )}
