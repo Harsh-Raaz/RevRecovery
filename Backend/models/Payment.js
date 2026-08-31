@@ -1,125 +1,172 @@
-const mongoose = require('mongoose');
+const mongoose = require("mongoose");
 
-const paymentSchema = new mongoose.Schema({
+const paymentSchema = new mongoose.Schema(
+  {
     email: {
-        type: String,
-        required: [true, 'Email is required'],
-        trim: true,
-        lowercase: true,
-        match: [/^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/, 'Please enter a valid email']
+      type: String,
+      required: [true, "Email is required"],
+      trim: true,
+      lowercase: true,
     },
+
     amount: {
-        type: Number,
-        required: [true, 'Amount is required'],
-        min: [1, 'Amount must be at least 1']
+      type: Number,
+      required: [true, "Amount is required"],
+      min: [1, "Amount must be at least 1"],
     },
+
+    // Razorpay details
+    razorpayOrderId: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
+
+    razorpayPaymentId: {
+      type: String,
+    },
+
+    razorpaySignature: {
+      type: String,
+    },
+
+    currency: {
+      type: String,
+      default: "INR",
+    },
+
     qrCode: {
-        type: String
+      type: String,
     },
+
     status: {
-        type: String,
-        enum: [
-            'PENDING',
-            'PROCESSING',
-            'SUCCESS',
-            'FAILED',
-            'RETRYING',
-            'WAITING_FOR_RETRY',
-            'ABORTED',
-            'EXPIRED'
-        ],
-        default: 'PENDING'
+      type: String,
+      enum: [
+        "PENDING",
+        "PROCESSING",
+        "SUCCESS",
+        "FAILED",
+        "RETRYING",
+        "WAITING_FOR_RETRY",
+        "ABORTED",
+        "EXPIRED",
+      ],
+      default: "PENDING",
     },
+
     retryCount: {
-        type: Number,
-        default: 0
+      type: Number,
+      default: 0,
     },
+
     maxRetries: {
-        type: Number,
-        default: 3
+      type: Number,
+      default: 3,
     },
+
     failureReason: {
-        type: String
+      type: String,
     },
-    failureHistory: [{
+
+    failureHistory: [
+      {
         attempt: Number,
         reason: String,
         timestamp: {
-            type: Date,
-            default: Date.now
-        }
-    }],
-    createdAt: {
-        type: Date,
-        default: Date.now
-    },
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+
     expiresAt: {
-        type: Date
+      type: Date,
     },
+
     lastAttemptAt: {
-        type: Date
+      type: Date,
     },
+
     nextRetryAt: {
-        type: Date
+      type: Date,
     },
+
     customerResponse: {
-        type: String
+      type: String,
     },
+
     abortRequested: {
-        type: Boolean,
-        default: false
+      type: Boolean,
+      default: false,
     },
+
     completedAt: {
-        type: Date
+      type: Date,
     },
+
     incompleteEmailSent: {
-        type: Boolean,
-        default: false
+      type: Boolean,
+      default: false,
     },
+
     lastReminderAt: {
-        type: Date
+      type: Date,
     },
+
     reminderCount: {
-        type: Number,
-        default: 0
+      type: Number,
+      default: 0,
     },
+
     aiRecommendation: {
-        classification: String,
-        action: String,
-        confidence: Number,
-        reason: String
-    }
-}, {
-    timestamps: true
+      classification: String,
+      action: String,
+      confidence: Number,
+      reason: String,
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+paymentSchema.index({
+  status: 1,
+  expiresAt: 1,
 });
 
-// Indexes for performance
-paymentSchema.index({ status: 1, expiresAt: 1 });
-paymentSchema.index({ status: 1, nextRetryAt: 1 });
-paymentSchema.index({ email: 1, createdAt: -1 });
-
-// Virtual for time remaining
-paymentSchema.virtual('timeRemaining').get(function() {
-    if (!this.expiresAt) return 0;
-    const remaining = this.expiresAt - Date.now();
-    return Math.max(0, Math.floor(remaining / 1000));
+paymentSchema.index({
+  status: 1,
+  nextRetryAt: 1,
 });
 
-// Method to check if payment is expired
-paymentSchema.methods.isExpired = function() {
-    if (!this.expiresAt) return false;
-    return Date.now() > this.expiresAt;
+paymentSchema.index({
+  email: 1,
+  createdAt: -1,
+});
+
+paymentSchema.virtual("timeRemaining").get(function () {
+  if (!this.expiresAt) return 0;
+
+  const remaining = this.expiresAt - Date.now();
+
+  return Math.max(0, Math.floor(remaining / 1000));
+});
+
+paymentSchema.methods.isExpired = function () {
+  if (!this.expiresAt) return false;
+
+  return Date.now() > this.expiresAt;
 };
 
-// Method to check if can retry
-paymentSchema.methods.canRetry = function() {
-    return (
-        this.status !== 'SUCCESS' &&
-        this.status !== 'ABORTED' &&
-        !this.abortRequested &&
-        !this.isExpired() &&
-        this.retryCount < this.maxRetries
-    );
+paymentSchema.methods.canRetry = function () {
+  return (
+    this.status !== "SUCCESS" &&
+    this.status !== "ABORTED" &&
+    !this.abortRequested &&
+    !this.isExpired() &&
+    this.retryCount < this.maxRetries
+  );
 };
 
-module.exports = mongoose.model('Payment', paymentSchema);
+module.exports = mongoose.model("Payment", paymentSchema);

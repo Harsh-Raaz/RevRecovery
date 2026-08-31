@@ -4,7 +4,7 @@ const {
   sendVerificationEmail,
 } = require("../services/emailService");
 
-const verificationTokens = new Map();
+const Verification = require("../models/Verification.js");
 
 const sendVerification = async (req, res) => {
   try {
@@ -28,11 +28,19 @@ const sendVerification = async (req, res) => {
 
     const expiresAt = Date.now() + 15 * 60 * 1000;
 
-    verificationTokens.set(email, {
-      token,
-      expiresAt,
-      verified: false,
-    });
+    await Verification.findOneAndUpdate(
+  { email: email.toLowerCase() },
+  {
+    email: email.toLowerCase(),
+    token,
+    expiresAt: new Date(expiresAt),
+    verified: false,
+  },
+  {
+    upsert: true,
+    new: true,
+  }
+);
 
     const verificationUrl =
       `http://localhost:${process.env.PORT || 5000}` +
@@ -52,7 +60,7 @@ const sendVerification = async (req, res) => {
   }
 };
 
-const verifyEmail = (req, res) => {
+const verifyEmail = async (req, res) => {
   try {
     const { token } = req.query;
 
@@ -60,35 +68,35 @@ const verifyEmail = (req, res) => {
       return res.status(400).send("Verification token is missing");
     }
 
-    for (const [email, data] of verificationTokens.entries()) {
-      if (data.token === token) {
-        if (Date.now() > data.expiresAt) {
-          verificationTokens.delete(email);
+    const verification = await Verification.findOne({
+      token,
+    });
 
-          return res.status(400).send(
-            "Verification link has expired"
-          );
-        }
-
-        data.verified = true;
-
-        verificationTokens.set(email, data);
-
-        return res.redirect(
-  `http://localhost:5173/?verified=true&email=${encodeURIComponent(email)}`
-);
-      }
+    if (!verification) {
+      return res.status(400).send("Invalid verification token");
     }
 
-    return res.status(400).send(
-      "Invalid verification token"
+    if (Date.now() > verification.expiresAt.getTime()) {
+      await Verification.deleteOne({
+        _id: verification._id,
+      });
+
+      return res.status(400).send("Verification link has expired");
+    }
+
+    verification.verified = true;
+
+    await verification.save();
+
+    return res.redirect(
+      `http://localhost:5173/?verified=true&email=${encodeURIComponent(
+        verification.email
+      )}`
     );
   } catch (error) {
     console.error("Verify email error:", error);
 
-    res.status(500).send(
-      "Something went wrong during verification"
-    );
+    return res.status(500).send("Something went wrong during verification");
   }
 };
 

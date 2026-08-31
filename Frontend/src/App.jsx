@@ -93,7 +93,7 @@ const [verified, setVerified] = useState(false);
     const order = response.order;
 
     // Step 2: Razorpay Checkout open
-    const options = {
+        const options = {
       key: import.meta.env.VITE_RAZORPAY_KEY_ID,
 
       amount: order.amount,
@@ -116,11 +116,15 @@ const [verified, setVerified] = useState(false);
         try {
           setMessage("Verifying payment...");
 
-          // Step 3: Backend signature verification
           const verification = await paymentApi.verifyPayment({
-            razorpay_order_id: razorpayResponse.razorpay_order_id,
-            razorpay_payment_id: razorpayResponse.razorpay_payment_id,
-            razorpay_signature: razorpayResponse.razorpay_signature,
+            razorpay_order_id:
+              razorpayResponse.razorpay_order_id,
+
+            razorpay_payment_id:
+              razorpayResponse.razorpay_payment_id,
+
+            razorpay_signature:
+              razorpayResponse.razorpay_signature,
           });
 
           if (verification.success) {
@@ -129,7 +133,11 @@ const [verified, setVerified] = useState(false);
             setMessage("Payment verification failed.");
           }
         } catch (error) {
-          console.error(error);
+          console.error(
+            "Payment verification error:",
+            error
+          );
+
           setMessage("Payment verification failed.");
         }
       },
@@ -141,15 +149,77 @@ const [verified, setVerified] = useState(false);
       },
     };
 
+    // Razorpay instance create karo
+    if (!window.Razorpay) {
+      setMessage(
+        "Razorpay Checkout failed to load. Please refresh the page."
+      );
+      return;
+    }
+
     const razorpay = new window.Razorpay(options);
 
-    razorpay.on("payment.failed", function (response) {
-      console.error("Payment failed:", response.error);
+    // Failed payment handle karo
+    razorpay.on(
+      "payment.failed",
+      async function (response) {
+        console.error(
+          "Payment failed:",
+          response.error
+        );
 
-      setMessage(
-        response.error.description || "Payment failed."
-      );
-    });
+        setMessage(
+          response.error.description ||
+            "Payment failed."
+        );
+
+        try {
+          await axios.post(
+            "http://localhost:5000/api/payment/failed",
+            {
+              razorpay_order_id: order.id,
+
+              reason:
+                response.error.description ||
+                "Payment failed",
+            }
+          );
+        } catch (error) {
+          console.error(
+            "Failed to save payment failure:",
+            error
+          );
+        }
+      }
+    );
+
+    // Checkout open karo
+    razorpay.open();
+
+    razorpay.on("payment.failed", async function (response) {
+  console.error("Payment failed:", response.error);
+
+  setMessage(
+    response.error.description || "Payment failed."
+  );
+
+  try {
+    await axios.post(
+      "http://localhost:5000/api/payment/failed",
+      {
+        razorpay_order_id: order.id,
+        reason:
+          response.error.description ||
+          "Payment failed",
+      }
+    );
+  } catch (error) {
+    console.error(
+      "Failed to save payment failure:",
+      error
+    );
+  }
+});
 
     razorpay.open();
 
