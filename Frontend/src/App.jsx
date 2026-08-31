@@ -1,6 +1,7 @@
 import { useState ,useEffect} from "react";
 import "./App.css";
 import axios from "axios";
+import { paymentApi } from "./services/api";
 function App() {
   const [email, setEmail] = useState("");
   const [amount, setAmount] = useState("");
@@ -74,19 +75,96 @@ const [verified, setVerified] = useState(false);
     setLoading(false);
   }
 };
-  const handleSubmit = (e) => {
-    e.preventDefault();
+  const handleSubmit = async (e) => {
+  e.preventDefault();
 
-    if (!validateForm()) return;
+  if (!validateForm()) return;
 
-    console.log({
+  try {
+    setLoading(true);
+    setMessage("");
+
+    // Step 1: Backend se Razorpay order create
+    const response = await paymentApi.createPayment({
       email,
-      amount,
+      amount: Number(amount),
     });
 
-    // Next step:
-    // Backend API call → QR generation
-  };
+    const order = response.order;
+
+    // Step 2: Razorpay Checkout open
+    const options = {
+      key: import.meta.env.VITE_RAZORPAY_KEY_ID,
+
+      amount: order.amount,
+      currency: order.currency,
+
+      name: "AI Revenue Recovery",
+      description: "Payment",
+
+      order_id: order.id,
+
+      prefill: {
+        email: email,
+      },
+
+      theme: {
+        color: "#2563eb",
+      },
+
+      handler: async function (razorpayResponse) {
+        try {
+          setMessage("Verifying payment...");
+
+          // Step 3: Backend signature verification
+          const verification = await paymentApi.verifyPayment({
+            razorpay_order_id: razorpayResponse.razorpay_order_id,
+            razorpay_payment_id: razorpayResponse.razorpay_payment_id,
+            razorpay_signature: razorpayResponse.razorpay_signature,
+          });
+
+          if (verification.success) {
+            setMessage("Payment successful and verified.");
+          } else {
+            setMessage("Payment verification failed.");
+          }
+        } catch (error) {
+          console.error(error);
+          setMessage("Payment verification failed.");
+        }
+      },
+
+      modal: {
+        ondismiss: function () {
+          setMessage("Payment cancelled.");
+        },
+      },
+    };
+
+    const razorpay = new window.Razorpay(options);
+
+    razorpay.on("payment.failed", function (response) {
+      console.error("Payment failed:", response.error);
+
+      setMessage(
+        response.error.description || "Payment failed."
+      );
+    });
+
+    razorpay.open();
+
+  } catch (error) {
+    console.error("Payment error:", error);
+
+    setMessage(
+      error.response?.data?.message ||
+      error.message ||
+      "Failed to start payment"
+    );
+  } finally {
+    setLoading(false);
+  }
+};
 
   return (
     <div className="app">
@@ -110,7 +188,7 @@ const [verified, setVerified] = useState(false);
             </h1>
 
             <p>
-              Enter the payment details below to generate a secure QR code.
+                Enter the payment details below to make a secure payment.
             </p>
           </div>
 
@@ -210,12 +288,12 @@ const [verified, setVerified] = useState(false);
 
         <div className="features">
           <div className="feature">
-            <div className="feature-icon">QR</div>
-            <div>
-              <strong>Instant QR</strong>
-              <span>Generate in seconds</span>
+            <div className="feature-icon">₹</div>
+              <div>
+              <strong>Instant Payment</strong>
+              <span>Secure Razorpay checkout</span>
+              </div>
             </div>
-          </div>
 
           <div className="feature-divider"></div>
 
