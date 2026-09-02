@@ -24,14 +24,23 @@ const sendVerification = async (req, res) => {
       });
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+    const backendUrl = process.env.BACKEND_URL;
+
+    if (!backendUrl) {
+      return res.status(500).json({
+        message: "Server verification URL is not configured",
+      });
+    }
+
     const token = crypto.randomBytes(32).toString("hex");
 
     const expiresAt = Date.now() + 15 * 60 * 1000;
 
     await Verification.findOneAndUpdate(
-  { email: email.toLowerCase() },
+  { email: normalizedEmail },
   {
-    email: email.toLowerCase(),
+    email: normalizedEmail,
     token,
     expiresAt: new Date(expiresAt),
     verified: false,
@@ -43,10 +52,10 @@ const sendVerification = async (req, res) => {
 );
 
     const verificationUrl =
-      `http://localhost:${process.env.PORT || 5000}` +
-      `/api/auth/verify-email?token=${token}`;
+      `${backendUrl.replace(/\/$/, "")}` +
+      `/api/auth/verify-email?token=${encodeURIComponent(token)}`;
 
-    await sendVerificationEmail(email, verificationUrl);
+    await sendVerificationEmail(normalizedEmail, verificationUrl);
 
     res.status(200).json({
       message: "Verification email sent",
@@ -84,12 +93,18 @@ const verifyEmail = async (req, res) => {
       return res.status(400).send("Verification link has expired");
     }
 
+    const frontendUrl = process.env.FRONTEND_URL;
+
+    if (!frontendUrl) {
+      return res.status(500).send("Server frontend URL is not configured");
+    }
+
     verification.verified = true;
 
     await verification.save();
 
     return res.redirect(
-      `http://localhost:5173/?verified=true&email=${encodeURIComponent(
+      `${frontendUrl.replace(/\/$/, "")}/?verified=true&email=${encodeURIComponent(
         verification.email
       )}`
     );

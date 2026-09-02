@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 
 const Payment = require("../models/Payment");
+const Verification = require("../models/Verification");
 const { createOrder } = require("../services/paymentService");
 const { diagnosePayment } = require("../services/aiService");
 const { scheduleRetry, MAX_RETRIES } = require("../services/retryService");
@@ -23,11 +24,24 @@ const createPaymentOrder = async (req, res) => {
       });
     }
 
+    const normalizedEmail = String(email).trim().toLowerCase();
+    const verification = await Verification.exists({
+      email: normalizedEmail,
+      verified: true,
+    });
+
+    if (!verification) {
+      return res.status(403).json({
+        success: false,
+        message: "Please verify your email before making a payment.",
+      });
+    }
+
     const order = await createOrder(amount);
 
     // MongoDB mein payment save karo
     const payment = await Payment.create({
-      email,
+      email: normalizedEmail,
       amount: Number(amount),
       currency: order.currency,
       razorpayOrderId: order.id,

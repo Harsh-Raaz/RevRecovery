@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import "../App.css";
-import axios from "axios";
-import { paymentApi } from "../services/api";
+import { authApi, paymentApi } from "../services/api";
 function HomePage() {
   const [email, setEmail] = useState("");
   const [amount, setAmount] = useState("");
@@ -71,12 +70,8 @@ const [verified, setVerified] = useState(false);
     setLoading(true);
     setMessage("");
 
-    const response = await axios.post(
-      "http://localhost:5000/api/auth/send-verification",
-      { email }
-    );
-
-    setMessage(response.data.message);
+    const response = await authApi.sendVerification(email);
+    setMessage(response.message);
   } catch (error) {
     setMessage(
       error.response?.data?.message ||
@@ -190,6 +185,11 @@ const [verified, setVerified] = useState(false);
 
   if (!validateForm()) return;
 
+  if (!verified) {
+    setMessage("Please verify your email before making a payment.");
+    return;
+  }
+
   stopRetryPolling();
   openedRetryOrderIdRef.current = null;
 
@@ -261,7 +261,12 @@ const [verified, setVerified] = useState(false);
                   placeholder="customer@example.com"
                   value={email}
                   onChange={(e) => {
-                    setEmail(e.target.value);
+                    const nextEmail = e.target.value;
+                    if (nextEmail !== email && verified) {
+                      setVerified(false);
+                      setMessage("Email changed. Please verify the new email before making a payment.");
+                    }
+                    setEmail(nextEmail);
                     if (errors.email) {
                       setErrors((prev) => ({
                         ...prev,
