@@ -272,91 +272,151 @@ function Dashboard() {
       </section>
 
       {/* AI Diagnosis */}
-      <section className="dashboard-section">
+      {/* AI Diagnosis */}
+<section className="dashboard-section">
 
-        <div className="section-header">
-          <div>
-            <h2>AI Recovery Overview</h2>
+  <div className="section-header">
+    <div>
+      <h2>AI Recovery Intelligence</h2>
 
-            <p>
-              Current recovery pipeline
-            </p>
-          </div>
-        </div>
+      <p>
+        Gemini-powered diagnosis and recovery recommendations
+      </p>
+    </div>
+  </div>
 
-        <div className="recovery-flow">
+  {payments.filter(
+    (payment) => payment.aiRecommendation
+  ).length === 0 ? (
 
-          <div className="flow-step">
-            <div className="flow-number">
-              01
+    <div className="empty-state">
+      No AI diagnosis available yet.
+      <br />
+      AI diagnosis will appear here after a payment failure.
+    </div>
+
+  ) : (
+
+    <div className="ai-diagnosis-list">
+
+      {payments
+        .filter((payment) => payment.aiRecommendation)
+        .map((payment) => {
+
+          const ai = payment.aiRecommendation;
+
+          return (
+            <div
+              className="ai-diagnosis-card"
+              key={payment._id}
+            >
+
+              <div className="ai-card-header">
+
+                <div>
+                  <strong>
+                    {payment.email}
+                  </strong>
+
+                  <span>
+                    Payment: ₹
+                    {payment.amount?.toLocaleString("en-IN")}
+                  </span>
+                </div>
+
+                <span
+                  className={`risk-badge ${
+                    ai.riskLevel?.toLowerCase()
+                  }`}
+                >
+                  {ai.riskLevel || "UNKNOWN"} RISK
+                </span>
+
+              </div>
+
+              <div className="ai-grid">
+
+                <div className="ai-item">
+                  <span>Diagnosis</span>
+                  <strong>
+                    {ai.classification || "N/A"}
+                  </strong>
+                </div>
+
+                <div className="ai-item">
+                  <span>Root Cause</span>
+                  <strong>
+                    {ai.rootCause || "N/A"}
+                  </strong>
+                </div>
+
+                <div className="ai-item">
+                  <span>AI Confidence</span>
+                  <strong>
+                    {ai.confidence != null
+                      ? `${Math.round(ai.confidence * 100)}%`
+                      : "N/A"}
+                  </strong>
+                </div>
+
+                <div className="ai-item">
+                  <span>Recovery Probability</span>
+                  <strong>
+                    {ai.recoveryProbability != null
+                      ? `${Math.round(
+                          ai.recoveryProbability * 100
+                        )}%`
+                      : "N/A"}
+                  </strong>
+                </div>
+
+                <div className="ai-item">
+                  <span>Recommended Action</span>
+                  <strong>
+                    {ai.action || "N/A"}
+                  </strong>
+                </div>
+
+                <div className="ai-item">
+                  <span>Retry After</span>
+                  <strong>
+                    {ai.retryAfterMinutes != null
+                      ? `${ai.retryAfterMinutes} minutes`
+                      : "N/A"}
+                  </strong>
+                </div>
+
+              </div>
+
+              <div className="ai-reason">
+
+                <span>AI Reasoning</span>
+
+                <p>
+                  {ai.reason || "No reasoning available."}
+                </p>
+
+              </div>
+
+              <div className="ai-message">
+
+                <span>Customer Message</span>
+
+                <p>
+                  {ai.customerMessage ||
+                    "No customer message generated."}
+                </p>
+
+              </div>
+
             </div>
+          );
+        })}
 
-            <strong>
-              Detect
-            </strong>
+    </div>
+  )}
 
-            <span>
-              Identify unresolved payments
-            </span>
-          </div>
-
-          <div className="flow-arrow">
-            →
-          </div>
-
-          <div className="flow-step">
-            <div className="flow-number">
-              02
-            </div>
-
-            <strong>
-              Diagnose
-            </strong>
-
-            <span>
-              Determine why revenue is at risk
-            </span>
-          </div>
-
-          <div className="flow-arrow">
-            →
-          </div>
-
-          <div className="flow-step">
-            <div className="flow-number">
-              03
-            </div>
-
-            <strong>
-              Recover
-            </strong>
-
-            <span>
-              Execute the appropriate action
-            </span>
-          </div>
-
-          <div className="flow-arrow">
-            →
-          </div>
-
-          <div className="flow-step">
-            <div className="flow-number">
-              04
-            </div>
-
-            <strong>
-              Measure
-            </strong>
-
-            <span>
-              Track recovered revenue
-            </span>
-          </div>
-
-        </div>
-
-      </section>
+</section>
 
       {/* Recent Transactions */}
       <section className="dashboard-section">

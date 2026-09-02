@@ -2,7 +2,7 @@ const crypto = require("crypto");
 
 const Payment = require("../models/Payment");
 const { createOrder } = require("../services/paymentService");
-
+const { diagnosePayment } = require("../services/aiService");
 const createPaymentOrder = async (req, res) => {
   try {
     const { amount, email } = req.body;
@@ -167,6 +167,39 @@ const paymentFailed = async (req, res) => {
 
     await payment.save();
 
+
+try {
+  const diagnosis = await diagnosePayment(
+    payment.toObject()
+  );
+
+    payment.aiRecommendation = {
+    classification: diagnosis.diagnosis,
+    rootCause: diagnosis.rootCause,
+    action: diagnosis.recommendedAction,
+    confidence: diagnosis.confidence,
+    recoveryProbability: diagnosis.recoveryProbability,
+    retryAfterMinutes: diagnosis.retryAfterMinutes,
+    customerMessage: diagnosis.customerMessage,
+    reason: diagnosis.reasoning,
+    riskLevel: diagnosis.riskLevel,
+    diagnosedAt: new Date(),
+  };
+
+  await payment.save();
+
+  console.log(
+    "Gemini AI Diagnosis:",
+    payment.aiRecommendation
+  );
+
+} catch (error) {
+  console.error(
+    "Gemini AI diagnosis failed:",
+    error.message
+  );
+}
+
     res.status(200).json({
       success: true,
       message: "Payment failure saved",
@@ -178,6 +211,91 @@ const paymentFailed = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to save payment failure",
+    });
+  }
+};
+
+const testAIDiagnosis = async (req, res) => {
+  try {
+    const testPayment = {
+      amount: 500,
+      currency: "INR",
+      status: "FAILED",
+      failureReason: "Payment failed due to temporary network issue",
+      retryCount: 1,
+      maxRetries: 3,
+    };
+
+    const diagnosis = await diagnosePayment(testPayment);
+
+    res.status(200).json({
+      success: true,
+      message: "AI diagnosis working",
+      diagnosis,
+    });
+
+  } catch (error) {
+    console.error("AI test failed:", error);
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+const testFailedPayment = async (req, res) => {
+  try {
+    const testPayment = await Payment.create({
+      email: "test@example.com",
+      amount: 500,
+      currency: "INR",
+      razorpayOrderId: `test_order_${Date.now()}`,
+      status: "FAILED",
+      failureReason:
+        "Payment failed due to temporary network issue",
+      retryCount: 1,
+      maxRetries: 3,
+      lastAttemptAt: new Date(),
+    });
+
+    const diagnosis = await diagnosePayment(
+      testPayment.toObject()
+    );
+
+    testPayment.aiRecommendation = {
+      classification: diagnosis.diagnosis,
+      rootCause: diagnosis.rootCause,
+      action: diagnosis.recommendedAction,
+      confidence: diagnosis.confidence,
+      recoveryProbability:
+        diagnosis.recoveryProbability,
+      retryAfterMinutes:
+        diagnosis.retryAfterMinutes,
+      customerMessage:
+        diagnosis.customerMessage,
+      reason: diagnosis.reasoning,
+      riskLevel: diagnosis.riskLevel,
+      diagnosedAt: new Date(),
+    };
+
+    await testPayment.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Test failed payment created and diagnosed",
+      payment: testPayment,
+    });
+
+  } catch (error) {
+    console.error(
+      "Test failed payment error:",
+      error
+    );
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
     });
   }
 };
@@ -277,8 +395,8 @@ const getDashboardStats = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(10)
       .select(
-        "email amount status recovered failureReason retryCount createdAt completedAt"
-      );
+  "email amount status recovered failureReason retryCount createdAt completedAt aiRecommendation"
+);
 
     res.status(200).json({
       success: true,
@@ -313,4 +431,6 @@ module.exports = {
   verifyPayment,
   paymentFailed,
   getDashboardStats,
+  testAIDiagnosis,
+  testFailedPayment,
 };

@@ -123,11 +123,17 @@ const paymentSchema = new mongoose.Schema(
     },
 
     aiRecommendation: {
-      classification: String,
-      action: String,
-      confidence: Number,
-      reason: String,
-    },
+  classification: String,
+  rootCause: String,
+  action: String,
+  confidence: Number,
+  recoveryProbability: Number,
+  retryAfterMinutes: Number,
+  customerMessage: String,
+  reason: String,
+  riskLevel: String,
+  diagnosedAt: Date,
+},
   },
   {
     timestamps: true,
