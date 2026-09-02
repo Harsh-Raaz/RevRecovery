@@ -19,6 +19,19 @@ export const paymentApi = {
 
     return response.data;
   },
+  reportFailure: async ({ razorpay_order_id, reason }) => {
+    const response = await api.post("/payment/failed", {
+      razorpay_order_id,
+      reason,
+    });
+
+    return response.data;
+  },
+  getPaymentStatus: async (paymentId) => {
+    const response = await api.get(`/payment/status/${paymentId}`);
+
+    return response.data;
+  },
     getDashboard: async () => {
     const response = await api.get("/payment/dashboard");
 

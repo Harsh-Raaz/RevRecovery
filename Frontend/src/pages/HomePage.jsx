@@ -1,4 +1,4 @@
-import { useState ,useEffect} from "react";
+import { useState, useEffect, useRef } from "react";
 import "../App.css";
 import axios from "axios";
 import { paymentApi } from "../services/api";
@@ -9,6 +9,15 @@ function HomePage() {
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
 const [verified, setVerified] = useState(false);
+  const retryPollingRef = useRef(null);
+  const openedRetryOrderIdRef = useRef(null);
+
+  const stopRetryPolling = () => {
+    if (retryPollingRef.current) {
+      clearInterval(retryPollingRef.current);
+      retryPollingRef.current = null;
+    }
+  };
 
   useEffect(() => {
   const params = new URLSearchParams(window.location.search);
@@ -27,6 +36,8 @@ const [verified, setVerified] = useState(false);
     window.history.replaceState({}, document.title, "/");
   }
 }, []);
+
+  useEffect(() => () => stopRetryPolling(), []);
   const validateForm = () => {
     const newErrors = {};
 
@@ -75,10 +86,112 @@ const [verified, setVerified] = useState(false);
     setLoading(false);
   }
 };
+
+  const openCheckout = (order, paymentId) => {
+    if (!window.Razorpay) {
+      setMessage("Razorpay Checkout failed to load. Please refresh the page.");
+      return;
+    }
+
+    const options = {
+      key: import.meta.env.VITE_RAZORPAY_KEY_ID,
+      amount: order.amount,
+      currency: order.currency,
+      name: "AI Revenue Recovery",
+      description: "Payment",
+      order_id: order.id,
+      prefill: { email },
+      theme: { color: "#2563eb" },
+      handler: async function (razorpayResponse) {
+        try {
+          setMessage("Verifying payment...");
+          const verification = await paymentApi.verifyPayment({
+            razorpay_order_id: razorpayResponse.razorpay_order_id,
+            razorpay_payment_id: razorpayResponse.razorpay_payment_id,
+            razorpay_signature: razorpayResponse.razorpay_signature,
+          });
+
+          setMessage(
+            verification.success
+              ? "Payment successful and verified."
+              : "Payment verification failed."
+          );
+        } catch (error) {
+          console.error("Payment verification error:", error);
+          setMessage("Payment verification failed.");
+        }
+      },
+      modal: {
+        ondismiss: function () {
+          setMessage("Payment cancelled.");
+        },
+      },
+    };
+
+    const razorpay = new window.Razorpay(options);
+    razorpay.on("payment.failed", async function (response) {
+      console.error("Payment failed:", response.error);
+      setMessage(response.error.description || "Payment failed.");
+
+      try {
+        const failure = await paymentApi.reportFailure({
+          razorpay_order_id: order.id,
+          reason: response.error.description || "Payment failed",
+        });
+
+        if (failure.payment?.status === "WAITING_FOR_RETRY") {
+          startRetryPolling(paymentId);
+        }
+      } catch (error) {
+        console.error("Failed to save payment failure:", error);
+      }
+    });
+
+    razorpay.open();
+  };
+
+  const startRetryPolling = (paymentId) => {
+    stopRetryPolling();
+    setMessage("Recovery retry is scheduled. Waiting for the new payment order...");
+
+    const poll = async () => {
+      try {
+        const response = await paymentApi.getPaymentStatus(paymentId);
+        const payment = response.payment;
+
+        if (
+          payment.status === "RETRYING" &&
+          payment.retryCount > 0 &&
+          payment.order?.id &&
+          openedRetryOrderIdRef.current !== payment.order.id
+        ) {
+          openedRetryOrderIdRef.current = payment.order.id;
+          stopRetryPolling();
+          setMessage(`Opening retry #${payment.retryCount}...`);
+          openCheckout(payment.order, paymentId);
+          return;
+        }
+
+        if (["SUCCESS", "ABORTED", "FAILED"].includes(payment.status)) {
+          stopRetryPolling();
+        }
+      } catch (error) {
+        console.error("Retry status polling error:", error);
+        stopRetryPolling();
+      }
+    };
+
+    poll();
+    retryPollingRef.current = setInterval(poll, 3000);
+  };
+
   const handleSubmit = async (e) => {
   e.preventDefault();
 
   if (!validateForm()) return;
+
+  stopRetryPolling();
+  openedRetryOrderIdRef.current = null;
 
   try {
     setLoading(true);
@@ -90,138 +203,7 @@ const [verified, setVerified] = useState(false);
       amount: Number(amount),
     });
 
-    const order = response.order;
-
-    // Step 2: Razorpay Checkout open
-        const options = {
-      key: import.meta.env.VITE_RAZORPAY_KEY_ID,
-
-      amount: order.amount,
-      currency: order.currency,
-
-      name: "AI Revenue Recovery",
-      description: "Payment",
-
-      order_id: order.id,
-
-      prefill: {
-        email: email,
-      },
-
-      theme: {
-        color: "#2563eb",
-      },
-
-      handler: async function (razorpayResponse) {
-        try {
-          setMessage("Verifying payment...");
-
-          const verification = await paymentApi.verifyPayment({
-            razorpay_order_id:
-              razorpayResponse.razorpay_order_id,
-
-            razorpay_payment_id:
-              razorpayResponse.razorpay_payment_id,
-
-            razorpay_signature:
-              razorpayResponse.razorpay_signature,
-          });
-
-          if (verification.success) {
-            setMessage("Payment successful and verified.");
-          } else {
-            setMessage("Payment verification failed.");
-          }
-        } catch (error) {
-          console.error(
-            "Payment verification error:",
-            error
-          );
-
-          setMessage("Payment verification failed.");
-        }
-      },
-
-      modal: {
-        ondismiss: function () {
-          setMessage("Payment cancelled.");
-        },
-      },
-    };
-
-    // Razorpay instance create karo
-    if (!window.Razorpay) {
-      setMessage(
-        "Razorpay Checkout failed to load. Please refresh the page."
-      );
-      return;
-    }
-
-    const razorpay = new window.Razorpay(options);
-
-    // Failed payment handle karo
-    razorpay.on(
-      "payment.failed",
-      async function (response) {
-        console.error(
-          "Payment failed:",
-          response.error
-        );
-
-        setMessage(
-          response.error.description ||
-            "Payment failed."
-        );
-
-        try {
-          await axios.post(
-            "http://localhost:5000/api/payment/failed",
-            {
-              razorpay_order_id: order.id,
-
-              reason:
-                response.error.description ||
-                "Payment failed",
-            }
-          );
-        } catch (error) {
-          console.error(
-            "Failed to save payment failure:",
-            error
-          );
-        }
-      }
-    );
-
-    // Checkout open karo
-    razorpay.open();
-
-    razorpay.on("payment.failed", async function (response) {
-  console.error("Payment failed:", response.error);
-
-  setMessage(
-    response.error.description || "Payment failed."
-  );
-
-  try {
-    await axios.post(
-      "http://localhost:5000/api/payment/failed",
-      {
-        razorpay_order_id: order.id,
-        reason:
-          response.error.description ||
-          "Payment failed",
-      }
-    );
-  } catch (error) {
-    console.error(
-      "Failed to save payment failure:",
-      error
-    );
-  }
-});
-
-    razorpay.open();
+    openCheckout(response.order, response.paymentId);
 
   } catch (error) {
     console.error("Payment error:", error);

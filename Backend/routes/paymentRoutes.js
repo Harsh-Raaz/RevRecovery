@@ -4,6 +4,7 @@ const {
   createPaymentOrder,
   verifyPayment,
   paymentFailed,
+  getPaymentStatus,
   getDashboardStats,
   testAIDiagnosis,
   testFailedPayment,
@@ -14,6 +15,7 @@ const router = express.Router();
 router.post("/create-order", createPaymentOrder);
 router.post("/verify", verifyPayment);
 router.post("/failed", paymentFailed);
+router.get("/status/:paymentId", getPaymentStatus);
 
 router.get("/dashboard", getDashboardStats);
 router.get("/test-ai", testAIDiagnosis);

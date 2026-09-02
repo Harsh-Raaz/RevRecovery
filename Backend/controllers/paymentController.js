@@ -3,6 +3,8 @@ const crypto = require("crypto");
 const Payment = require("../models/Payment");
 const { createOrder } = require("../services/paymentService");
 const { diagnosePayment } = require("../services/aiService");
+const { scheduleRetry, MAX_RETRIES } = require("../services/retryService");
+const DEMO_RETRY_DELAY_MINUTES = 1;
 const createPaymentOrder = async (req, res) => {
   try {
     const { amount, email } = req.body;
@@ -30,6 +32,13 @@ const createPaymentOrder = async (req, res) => {
       currency: order.currency,
       razorpayOrderId: order.id,
       status: "PENDING",
+      maxRetries: MAX_RETRIES,
+      orderHistory: [
+        {
+          orderId: order.id,
+          attempt: 0,
+        },
+      ],
     });
 
     res.status(200).json({
@@ -93,12 +102,17 @@ const verifyPayment = async (req, res) => {
     }
 
     // Successful payment ko database mein update karo
+    const existingPayment = await Payment.findOne({
+      razorpayOrderId: razorpay_order_id,
+    }).select("retryCount");
+
     const payment = await Payment.findOneAndUpdate(
       { razorpayOrderId: razorpay_order_id },
       {
         razorpayPaymentId: razorpay_payment_id,
         razorpaySignature: razorpay_signature,
         status: "SUCCESS",
+        recovered: (existingPayment?.retryCount || 0) > 0,
         completedAt: new Date(),
       },
       {
@@ -155,10 +169,9 @@ const paymentFailed = async (req, res) => {
     payment.status = "FAILED";
     payment.failureReason = reason || "Payment failed";
 
-    payment.retryCount += 1;
-
     payment.failureHistory.push({
-      attempt: payment.retryCount,
+      // retryCount counts retries only; attempt includes the original payment.
+      attempt: payment.retryCount + 1,
       reason: reason || "Payment failed",
       timestamp: new Date(),
     });
@@ -186,6 +199,11 @@ try {
     diagnosedAt: new Date(),
   };
 
+  // Preserve every diagnosis while retaining aiRecommendation for the dashboard.
+  const diagnosisHistoryEntry = payment.aiRecommendation.toObject
+    ? payment.aiRecommendation.toObject()
+    : payment.aiRecommendation;
+  payment.aiDiagnosisHistory.push(diagnosisHistoryEntry);
   await payment.save();
 
   console.log(
@@ -199,6 +217,20 @@ try {
     error.message
   );
 }
+
+    if (payment.retryCount >= MAX_RETRIES) {
+      payment.status = "ABORTED";
+      await payment.save();
+    } else if (payment.aiRecommendation?.action === "RETRY") {
+      const scheduledPayment = await scheduleRetry(
+        payment._id,
+        DEMO_RETRY_DELAY_MINUTES
+      );
+      if (scheduledPayment) {
+        payment.status = scheduledPayment.status;
+        payment.nextRetryAt = scheduledPayment.nextRetryAt;
+      }
+    }
 
     res.status(200).json({
       success: true,
@@ -215,6 +247,40 @@ try {
   }
 };
 
+const getPaymentStatus = async (req, res) => {
+  try {
+    const payment = await Payment.findById(req.params.paymentId).select(
+      "razorpayOrderId amount currency status recovered retryCount maxRetries nextRetryAt"
+    );
+
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment record not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      payment: {
+        ...payment.toObject(),
+        // Razorpay Checkout expects its amount in paise, while Payment stores rupees.
+        order: {
+          id: payment.razorpayOrderId,
+          amount: Math.round(Number(payment.amount) * 100),
+          currency: payment.currency,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Get payment status error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to load payment status",
+    });
+  }
+};
+
 const testAIDiagnosis = async (req, res) => {
   try {
     const testPayment = {
@@ -223,7 +289,7 @@ const testAIDiagnosis = async (req, res) => {
       status: "FAILED",
       failureReason: "Payment failed due to temporary network issue",
       retryCount: 1,
-      maxRetries: 3,
+      maxRetries: 2,
     };
 
     const diagnosis = await diagnosePayment(testPayment);
@@ -254,8 +320,8 @@ const testFailedPayment = async (req, res) => {
       status: "FAILED",
       failureReason:
         "Payment failed due to temporary network issue",
-      retryCount: 1,
-      maxRetries: 3,
+      retryCount: 0,
+      maxRetries: 2,
       lastAttemptAt: new Date(),
     });
 
@@ -430,6 +496,7 @@ module.exports = {
   createPaymentOrder,
   verifyPayment,
   paymentFailed,
+  getPaymentStatus,
   getDashboardStats,
   testAIDiagnosis,
   testFailedPayment,

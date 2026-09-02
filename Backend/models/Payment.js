@@ -30,6 +30,17 @@ const paymentSchema = new mongoose.Schema(
       type: String,
     },
 
+    orderHistory: [
+      {
+        orderId: String,
+        attempt: Number,
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+
     currency: {
       type: String,
       default: "INR",
@@ -65,7 +76,7 @@ const paymentSchema = new mongoose.Schema(
 
     maxRetries: {
       type: Number,
-      default: 3,
+      default: 2,
     },
 
     failureReason: {
@@ -134,6 +145,22 @@ const paymentSchema = new mongoose.Schema(
   riskLevel: String,
   diagnosedAt: Date,
 },
+
+    // Each failure is diagnosed independently; retain prior diagnoses for audit.
+    aiDiagnosisHistory: [
+      {
+        classification: String,
+        rootCause: String,
+        action: String,
+        confidence: Number,
+        recoveryProbability: Number,
+        retryAfterMinutes: Number,
+        customerMessage: String,
+        reason: String,
+        riskLevel: String,
+        diagnosedAt: Date,
+      },
+    ],
   },
   {
     timestamps: true,

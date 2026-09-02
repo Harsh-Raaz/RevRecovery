@@ -6,8 +6,10 @@ const mongoose = require("mongoose");
 
 const authRoutes = require("./routes/authRoutes.js");
 const paymentRoutes = require("./routes/paymentRoutes.js");
+const { startRetryWorker } = require("./workers/retryWorker.js");
 
 const app = express();
+let retryWorker;
 
 app.use(cors());
 app.use(express.json());
@@ -17,6 +19,9 @@ mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {
     console.log("MongoDB connected successfully");
+    if (!retryWorker) {
+      retryWorker = startRetryWorker();
+    }
   })
   .catch((error) => {
     console.error("MongoDB connection error:", error);
