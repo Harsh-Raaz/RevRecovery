@@ -182,8 +182,135 @@ const paymentFailed = async (req, res) => {
   }
 };
 
+const getDashboardStats = async (req, res) => {
+  try {
+    // Total number of payments
+    const totalPayments = await Payment.countDocuments();
+
+    // Total payment volume
+    const totalVolumeResult = await Payment.aggregate([
+      {
+        $group: {
+          _id: null,
+          total: { $sum: "$amount" },
+        },
+      },
+    ]);
+
+    const totalPaymentVolume =
+      totalVolumeResult[0]?.total || 0;
+
+    // Revenue currently at risk
+    const revenueAtRiskResult = await Payment.aggregate([
+      {
+        $match: {
+          status: {
+            $in: [
+              "FAILED",
+              "RETRYING",
+              "WAITING_FOR_RETRY",
+              "PENDING",
+            ],
+          },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: "$amount" },
+        },
+      },
+    ]);
+
+    const revenueAtRisk =
+      revenueAtRiskResult[0]?.total || 0;
+
+    // Recovered revenue
+    const recoveredRevenueResult = await Payment.aggregate([
+      {
+        $match: {
+          status: "SUCCESS",
+          recovered: true,
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: "$amount" },
+        },
+      },
+    ]);
+
+    const recoveredRevenue =
+      recoveredRevenueResult[0]?.total || 0;
+
+    // Failed payments
+    const failedPayments =
+      await Payment.countDocuments({
+        status: "FAILED",
+      });
+
+    // Active recoveries
+    const activeRecoveries =
+      await Payment.countDocuments({
+        status: {
+          $in: [
+            "RETRYING",
+            "WAITING_FOR_RETRY",
+          ],
+        },
+      });
+
+    // Recovery rate
+    const recoveryRate =
+      revenueAtRisk > 0
+        ? Number(
+            (
+              (recoveredRevenue / revenueAtRisk) *
+              100
+            ).toFixed(2)
+          )
+        : 0;
+
+    // Recent transactions
+    const recentPayments = await Payment.find()
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .select(
+        "email amount status recovered failureReason retryCount createdAt completedAt"
+      );
+
+    res.status(200).json({
+      success: true,
+
+      stats: {
+        totalPayments,
+        totalPaymentVolume,
+        revenueAtRisk,
+        recoveredRevenue,
+        recoveryRate,
+        failedPayments,
+        activeRecoveries,
+      },
+
+      recentPayments,
+    });
+  } catch (error) {
+    console.error(
+      "Dashboard stats error:",
+      error
+    );
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to load dashboard data",
+    });
+  }
+};
+
 module.exports = {
   createPaymentOrder,
   verifyPayment,
   paymentFailed,
+  getDashboardStats,
 };

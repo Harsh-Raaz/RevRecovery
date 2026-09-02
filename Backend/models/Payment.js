@@ -53,6 +53,10 @@ const paymentSchema = new mongoose.Schema(
       ],
       default: "PENDING",
     },
+        recovered: {
+      type: Boolean,
+      default: false,
+    },
 
     retryCount: {
       type: Number,

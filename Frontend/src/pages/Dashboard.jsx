@@ -1,339 +1,437 @@
-import { useParams, useNavigate } from 'react-router-dom';
-import { usePayment } from '../hooks/usePayment';
-import QRCodeDisplay from '../components/QRCodeDisplay';
-import StatusBadge from '../components/StatusBadge';
-import { 
-  FaArrowLeft, 
-  FaSync, 
-  FaClock, 
-  FaCalendarAlt,
-  FaExclamationTriangle,
-  FaCheckCircle,
-  FaTimesCircle,
-  FaHourglassHalf,
-  FaBrain,
-  FaInfoCircle
-} from 'react-icons/fa';
-import toast from 'react-hot-toast';
+import { useEffect, useState } from "react";
+import { paymentApi } from "../services/api";
+import "./Dashboard.css";
 
-const Dashboard = () => {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  const {
-    payment,
-    aiRecommendation,
-    loading,
-    timeRemaining,
-    processPayment,
-    retryPayment,
-    scheduleRetry,
-    abortPayment,
-    fetchPayment,
-  } = usePayment(id);
+function Dashboard() {
+  const [dashboard, setDashboard] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  // Format time
-  const formatTime = (seconds) => {
-    if (!seconds || seconds <= 0) return '00:00';
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  };
+  const loadDashboard = async () => {
+    try {
+      setLoading(true);
+      setError("");
 
-  // Format date
-  const formatDate = (date) => {
-    if (!date) return 'N/A';
-    return new Date(date).toLocaleString();
-  };
+      const response = await paymentApi.getDashboard();
 
-  // Handle retry action
-  const handleRetry = async () => {
-    if (payment?.status === 'WAITING_FOR_RETRY') {
-      await scheduleRetry();
-    } else {
-      await retryPayment();
+      if (response.success) {
+        setDashboard(response);
+      } else {
+        setError("Failed to load dashboard");
+      }
+    } catch (error) {
+      console.error("Dashboard error:", error);
+
+      setError(
+        error.response?.data?.message ||
+          "Failed to load dashboard"
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Handle abort
-  const handleAbort = async () => {
-    if (window.confirm('Are you sure you want to abort this payment?')) {
-      await abortPayment();
-      toast.success('Payment aborted');
-    }
-  };
+  useEffect(() => {
+    loadDashboard();
+  }, []);
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary-500 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading payment details...</p>
+      <div className="dashboard-page">
+        <div className="dashboard-loading">
+          Loading dashboard...
         </div>
       </div>
     );
   }
 
-  if (!payment) {
+  if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <FaExclamationTriangle className="text-6xl text-yellow-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-gray-700">Payment Not Found</h2>
-          <p className="text-gray-500 mt-2">The payment you're looking for doesn't exist.</p>
-          <button
-            onClick={() => navigate('/')}
-            className="mt-4 btn-primary"
-          >
-            Go Home
+      <div className="dashboard-page">
+        <div className="dashboard-error">
+          {error}
+          <button onClick={loadDashboard}>
+            Retry
           </button>
         </div>
       </div>
     );
   }
 
-  const isSuccess = payment.status === 'SUCCESS';
-  const isFailed = payment.status === 'FAILED';
-  const isPending = payment.status === 'PENDING';
-  const isExpired = payment.status === 'EXPIRED';
-  const isAborted = payment.status === 'ABORTED';
-  const isWaitingRetry = payment.status === 'WAITING_FOR_RETRY';
-  const canRetry = payment.canRetry && !isAborted;
-  const showRetryOption = isFailed || isWaitingRetry;
+  const stats = dashboard?.stats || {};
+  const payments = dashboard?.recentPayments || [];
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-4xl">
-      {/* Back Button */}
-      <button
-        onClick={() => navigate('/')}
-        className="flex items-center text-gray-600 hover:text-gray-900 mb-6"
-      >
-        <FaArrowLeft className="mr-2" /> Back to Home
-      </button>
+    <div className="dashboard-page">
 
-      <div className="grid md:grid-cols-3 gap-6">
-        {/* Left Column - QR Code & Basic Info */}
-        <div className="md:col-span-1">
-          <div className="card">
-            <QRCodeDisplay qrCode={payment.qrCode} amount={payment.amount} />
-            
-            <div className="mt-4 text-center">
-              <p className="text-sm text-gray-500">Payment ID</p>
-              <p className="text-xs font-mono bg-gray-100 p-2 rounded truncate">
-                {payment.id}
-              </p>
+      {/* Header */}
+      <header className="dashboard-header">
+        <div>
+          <div className="dashboard-brand">
+            <div className="dashboard-brand-icon">
+              ₹
             </div>
 
-            <div className="mt-4 flex justify-center">
-              <StatusBadge status={payment.status} />
-            </div>
-
-            {isPending && (
-              <div className="mt-4 text-center">
-                <div className="flex items-center justify-center text-yellow-600">
-                  <FaClock className="mr-2" />
-                  <span>Time remaining: <strong>{formatTime(timeRemaining)}</strong></span>
-                </div>
-              </div>
-            )}
-
-            {isWaitingRetry && payment.nextRetryAt && (
-              <div className="mt-4 text-center">
-                <div className="flex items-center justify-center text-blue-600">
-                  <FaHourglassHalf className="mr-2" />
-                  <span>Retry at: <strong>{formatDate(payment.nextRetryAt)}</strong></span>
-                </div>
-              </div>
-            )}
+            <span>
+              AI Revenue Recovery
+            </span>
           </div>
 
-          {/* Action Buttons */}
-          <div className="card mt-4">
-            {isPending && (
-              <button
-                onClick={processPayment}
-                className="w-full btn-primary mb-2"
-              >
-                Simulate Payment
-              </button>
-            )}
+          <h1>Revenue Recovery Dashboard</h1>
 
-            {showRetryOption && canRetry && (
-              <button
-                onClick={handleRetry}
-                className="w-full btn-success mb-2 flex items-center justify-center"
-              >
-                <FaSync className="mr-2" /> 
-                {isWaitingRetry ? 'Retry Now' : 'Retry Payment'}
-              </button>
-            )}
-
-            {isWaitingRetry && canRetry && (
-              <button
-                onClick={scheduleRetry}
-                className="w-full btn-primary mb-2 flex items-center justify-center"
-              >
-                <FaClock className="mr-2" /> Schedule Retry (15min)
-              </button>
-            )}
-
-            {!isSuccess && !isAborted && (
-              <button
-                onClick={handleAbort}
-                className="w-full btn-danger flex items-center justify-center"
-              >
-                <FaTimesCircle className="mr-2" /> Abort Payment
-              </button>
-            )}
-
-            {!isSuccess && !isAborted && (
-              <button
-                onClick={fetchPayment}
-                className="w-full btn-secondary mt-2 flex items-center justify-center"
-              >
-                <FaSync className="mr-2" /> Refresh Status
-              </button>
-            )}
-          </div>
+          <p>
+            Detect, diagnose and recover revenue
+            at risk.
+          </p>
         </div>
 
-        {/* Right Column - Details */}
-        <div className="md:col-span-2">
-          {/* Payment Details */}
-          <div className="card">
-            <h3 className="text-lg font-semibold mb-4">Payment Details</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-sm text-gray-500">Amount</p>
-                <p className="text-2xl font-bold text-primary-600">
-                  ₹{payment.amount}
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Status</p>
-                <p className="font-semibold">
-                  <StatusBadge status={payment.status} compact />
-                </p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Email</p>
-                <p className="text-sm">{payment.email}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Created</p>
-                <p className="text-sm">{formatDate(payment.createdAt)}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500">Retry Count</p>
-                <p className="text-sm">{payment.retryCount} / {payment.maxRetries}</p>
-              </div>
-              {payment.failureReason && (
-                <div>
-                  <p className="text-sm text-gray-500">Failure Reason</p>
-                  <p className="text-sm text-red-600">{payment.failureReason}</p>
-                </div>
-              )}
-            </div>
+        <button
+          className="refresh-button"
+          onClick={loadDashboard}
+        >
+          ↻ Refresh
+        </button>
+      </header>
+
+      {/* KPI Cards */}
+      <section className="stats-grid">
+
+        <div className="stat-card">
+          <span className="stat-label">
+            Total Payment Volume
+          </span>
+
+          <strong>
+            ₹{stats.totalPaymentVolume?.toLocaleString("en-IN")}
+          </strong>
+
+          <span className="stat-subtext">
+            {stats.totalPayments} payments
+          </span>
+        </div>
+
+        <div className="stat-card risk-card">
+          <span className="stat-label">
+            Revenue at Risk
+          </span>
+
+          <strong>
+            ₹{stats.revenueAtRisk?.toLocaleString("en-IN")}
+          </strong>
+
+          <span className="stat-subtext">
+            Unresolved revenue
+          </span>
+        </div>
+
+        <div className="stat-card recovered-card">
+          <span className="stat-label">
+            Recovered Revenue
+          </span>
+
+          <strong>
+            ₹{stats.recoveredRevenue?.toLocaleString("en-IN")}
+          </strong>
+
+          <span className="stat-subtext">
+            Successfully recovered
+          </span>
+        </div>
+
+        <div className="stat-card">
+          <span className="stat-label">
+            Recovery Rate
+          </span>
+
+          <strong>
+            {stats.recoveryRate}%
+          </strong>
+
+          <span className="stat-subtext">
+            Recovery performance
+          </span>
+        </div>
+
+        <div className="stat-card">
+          <span className="stat-label">
+            Failed Payments
+          </span>
+
+          <strong>
+            {stats.failedPayments}
+          </strong>
+
+          <span className="stat-subtext">
+            Requiring attention
+          </span>
+        </div>
+
+        <div className="stat-card">
+          <span className="stat-label">
+            Active Recoveries
+          </span>
+
+          <strong>
+            {stats.activeRecoveries}
+          </strong>
+
+          <span className="stat-subtext">
+            Recovery workflows
+          </span>
+        </div>
+
+      </section>
+
+      {/* Revenue At Risk */}
+      <section className="dashboard-section">
+
+        <div className="section-header">
+          <div>
+            <h2>Revenue at Risk</h2>
+
+            <p>
+              Payments requiring recovery action
+            </p>
           </div>
 
-          {/* AI Recommendation */}
-          {aiRecommendation && (
-            <div className="card mt-4 border-blue-200 bg-blue-50">
-              <div className="flex items-start">
-                <FaBrain className="text-2xl text-primary-500 mr-3 mt-1" />
-                <div className="flex-1">
-                  <h4 className="font-semibold text-gray-800">AI Recommendation</h4>
-                  <div className="grid grid-cols-2 gap-2 mt-2">
-                    <div>
-                      <p className="text-xs text-gray-500">Classification</p>
-                      <p className="text-sm font-medium">{aiRecommendation.classification}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Confidence</p>
-                      <p className="text-sm font-medium">{aiRecommendation.confidence}</p>
-                    </div>
-                    <div className="col-span-2">
-                      <p className="text-xs text-gray-500">Action</p>
-                      <p className="text-sm font-medium">{aiRecommendation.suggestedAction}</p>
-                    </div>
-                    <div className="col-span-2">
-                      <p className="text-xs text-gray-500">Reason</p>
-                      <p className="text-sm">{aiRecommendation.reason}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
+          <span className="section-count">
+            ₹{stats.revenueAtRisk?.toLocaleString("en-IN")}
+          </span>
+        </div>
 
-          {/* Failure History */}
-          {payment.failureHistory && payment.failureHistory.length > 0 && (
-            <div className="card mt-4">
-              <h4 className="font-semibold text-gray-800 mb-3">Attempt History</h4>
-              <div className="space-y-2">
-                {payment.failureHistory.map((attempt, index) => (
-                  <div key={index} className="flex items-center justify-between bg-gray-50 p-2 rounded">
-                    <div className="flex items-center">
-                      <span className="text-sm font-medium mr-2">#{attempt.attempt}</span>
-                      <span className="text-sm text-red-600">{attempt.reason}</span>
-                    </div>
-                    <span className="text-xs text-gray-500">
-                      {formatDate(attempt.timestamp)}
-                    </span>
-                  </div>
+        <div className="table-container">
+
+          <table>
+            <thead>
+              <tr>
+                <th>Customer</th>
+                <th>Amount</th>
+                <th>Problem</th>
+                <th>Status</th>
+                <th>Retry Count</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {payments
+                .filter(
+                  (payment) =>
+                    payment.status !== "SUCCESS"
+                )
+                .map((payment) => (
+                  <tr key={payment._id}>
+
+                    <td>
+                      {payment.email}
+                    </td>
+
+                    <td>
+                      ₹
+                      {payment.amount?.toLocaleString(
+                        "en-IN"
+                      )}
+                    </td>
+
+                    <td>
+                      {payment.failureReason ||
+                        (
+                          payment.status ===
+                          "PENDING"
+                            ? "Payment pending"
+                            : "Payment failed"
+                        )}
+                    </td>
+
+                    <td>
+                      <span
+                        className={`status-badge ${payment.status.toLowerCase()}`}
+                      >
+                        {payment.status}
+                      </span>
+                    </td>
+
+                    <td>
+                      {payment.retryCount}
+                    </td>
+
+                  </tr>
                 ))}
-              </div>
+            </tbody>
+          </table>
+
+          {payments.filter(
+            (payment) =>
+              payment.status !== "SUCCESS"
+          ).length === 0 && (
+            <div className="empty-state">
+              No revenue currently at risk.
             </div>
           )}
 
-          {/* Status Messages */}
-          {isSuccess && (
-            <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center">
-              <FaCheckCircle className="text-green-500 mr-3 text-xl" />
-              <div>
-                <p className="font-semibold text-green-700">Payment Successful!</p>
-                <p className="text-sm text-green-600">Completed at {formatDate(payment.completedAt)}</p>
-              </div>
-            </div>
-          )}
-
-          {isFailed && !isWaitingRetry && (
-            <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center">
-              <FaTimesCircle className="text-red-500 mr-3 text-xl" />
-              <div>
-                <p className="font-semibold text-red-700">Payment Failed</p>
-                <p className="text-sm text-red-600">Reason: {payment.failureReason || 'Unknown'}</p>
-                {payment.retryCount >= payment.maxRetries && (
-                  <p className="text-sm text-yellow-600 mt-1">
-                    Max retries reached. Schedule a delayed retry.
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {isAborted && (
-            <div className="mt-4 p-4 bg-gray-50 border border-gray-200 rounded-lg flex items-center">
-              <FaInfoCircle className="text-gray-500 mr-3 text-xl" />
-              <div>
-                <p className="font-semibold text-gray-700">Payment Aborted</p>
-                <p className="text-sm text-gray-600">This payment was cancelled by the customer.</p>
-              </div>
-            </div>
-          )}
-
-          {isExpired && (
-            <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg flex items-center">
-              <FaClock className="text-yellow-500 mr-3 text-xl" />
-              <div>
-                <p className="font-semibold text-yellow-700">Payment Expired</p>
-                <p className="text-sm text-yellow-600">The payment window has expired.</p>
-              </div>
-            </div>
-          )}
         </div>
-      </div>
+      </section>
+
+      {/* AI Diagnosis */}
+      <section className="dashboard-section">
+
+        <div className="section-header">
+          <div>
+            <h2>AI Recovery Overview</h2>
+
+            <p>
+              Current recovery pipeline
+            </p>
+          </div>
+        </div>
+
+        <div className="recovery-flow">
+
+          <div className="flow-step">
+            <div className="flow-number">
+              01
+            </div>
+
+            <strong>
+              Detect
+            </strong>
+
+            <span>
+              Identify unresolved payments
+            </span>
+          </div>
+
+          <div className="flow-arrow">
+            →
+          </div>
+
+          <div className="flow-step">
+            <div className="flow-number">
+              02
+            </div>
+
+            <strong>
+              Diagnose
+            </strong>
+
+            <span>
+              Determine why revenue is at risk
+            </span>
+          </div>
+
+          <div className="flow-arrow">
+            →
+          </div>
+
+          <div className="flow-step">
+            <div className="flow-number">
+              03
+            </div>
+
+            <strong>
+              Recover
+            </strong>
+
+            <span>
+              Execute the appropriate action
+            </span>
+          </div>
+
+          <div className="flow-arrow">
+            →
+          </div>
+
+          <div className="flow-step">
+            <div className="flow-number">
+              04
+            </div>
+
+            <strong>
+              Measure
+            </strong>
+
+            <span>
+              Track recovered revenue
+            </span>
+          </div>
+
+        </div>
+
+      </section>
+
+      {/* Recent Transactions */}
+      <section className="dashboard-section">
+
+        <div className="section-header">
+          <div>
+            <h2>Recent Transactions</h2>
+
+            <p>
+              Latest payment activity
+            </p>
+          </div>
+        </div>
+
+        <div className="table-container">
+
+          <table>
+            <thead>
+              <tr>
+                <th>Customer</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th>Recovery</th>
+                <th>Date</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {payments.map((payment) => (
+                <tr key={payment._id}>
+
+                  <td>
+                    {payment.email}
+                  </td>
+
+                  <td>
+                    ₹
+                    {payment.amount?.toLocaleString(
+                      "en-IN"
+                    )}
+                  </td>
+
+                  <td>
+                    <span
+                      className={`status-badge ${payment.status.toLowerCase()}`}
+                    >
+                      {payment.status}
+                    </span>
+                  </td>
+
+                  <td>
+                    {payment.recovered
+                      ? "Recovered"
+                      : payment.status ===
+                        "SUCCESS"
+                      ? "Normal"
+                      : "At Risk"}
+                  </td>
+
+                  <td>
+                    {new Date(
+                      payment.createdAt
+                    ).toLocaleDateString("en-IN")}
+                  </td>
+
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+        </div>
+      </section>
+
     </div>
   );
-};
+}
 
 export default Dashboard;

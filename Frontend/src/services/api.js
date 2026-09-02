@@ -19,4 +19,9 @@ export const paymentApi = {
 
     return response.data;
   },
+    getDashboard: async () => {
+    const response = await api.get("/payment/dashboard");
+
+    return response.data;
+  },
 };
