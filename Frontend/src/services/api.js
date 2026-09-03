@@ -34,6 +34,19 @@ export const paymentApi = {
 
     return response.data;
   },
+  scheduleRetry: async (paymentId, { retryAfter, retryUnit }) => {
+    const response = await api.post(`/payment/${paymentId}/schedule-retry`, {
+      retryAfter: Number(retryAfter),
+      retryUnit,
+    });
+
+    return response.data;
+  },
+  abortRetry: async (paymentId) => {
+    const response = await api.post("/payment/abort-retry", { paymentId });
+
+    return response.data;
+  },
   getPaymentStatus: async (paymentId) => {
     const response = await api.get(`/payment/status/${paymentId}`);
 

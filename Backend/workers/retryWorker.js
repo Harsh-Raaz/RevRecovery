@@ -7,11 +7,13 @@ const processDueRetries = async () => {
   const duePayments = await Payment.find({
     status: "WAITING_FOR_RETRY",
     nextRetryAt: { $lte: new Date() },
+    abortRequested: { $ne: true },
     retryCount: { $lt: 2 },
   }).select("_id");
 
   for (const payment of duePayments) {
     try {
+      console.log(`[RETRY WORKER] Due payment found: ${payment._id}`);
       await executeRetry(payment._id);
     } catch (error) {
       console.error(`Retry failed for payment ${payment._id}:`, error.message);

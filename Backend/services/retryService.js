@@ -2,23 +2,45 @@ const Payment = require("../models/Payment");
 const { createOrder } = require("./paymentService");
 
 const MAX_RETRIES = 2;
+const RETRY_DELAY_MULTIPLIERS = {
+  SECONDS: 1000,
+  MINUTES: 60 * 1000,
+  HOURS: 60 * 60 * 1000,
+};
 
-const scheduleRetry = async (paymentId, retryAfterMinutes) => {
+const getRetryDelayMs = (retryAfter, retryUnit) => {
+  const delay = Number(retryAfter);
+  const multiplier = RETRY_DELAY_MULTIPLIERS[retryUnit];
+
+  if (!Number.isFinite(delay) || delay <= 0 || !multiplier) {
+    return null;
+  }
+
+  return delay * multiplier;
+};
+
+const scheduleRetry = async (paymentId, retryAfter, retryUnit) => {
   const payment = await Payment.findById(paymentId);
 
   if (!payment || !payment.canRetry() || payment.retryCount >= MAX_RETRIES) {
     return null;
   }
 
-  const retryDelayMinutes = Number(retryAfterMinutes) || 0;
-  const nextRetryAt = new Date(Date.now() + retryDelayMinutes * 60 * 1000);
+  const retryDelayMs = getRetryDelayMs(retryAfter, retryUnit);
+  if (retryDelayMs === null) {
+    return null;
+  }
+
+  const nextRetryAt = new Date(Date.now() + retryDelayMs);
+  console.log(`[RETRY] Customer requested: ${retryAfter} ${retryUnit}`);
+  console.log(`[RETRY] nextRetryAt: ${nextRetryAt.toISOString()}`);
 
   return Payment.findOneAndUpdate(
     {
       _id: payment._id,
       status: "FAILED",
       retryCount: { $lt: MAX_RETRIES },
-      "aiRecommendation.action": "RETRY",
+      abortRequested: { $ne: true },
     },
     {
       $set: {
@@ -38,6 +60,7 @@ const executeRetry = async (paymentId) => {
       _id: paymentId,
       status: "WAITING_FOR_RETRY",
       nextRetryAt: { $lte: new Date() },
+      abortRequested: { $ne: true },
       retryCount: { $lt: MAX_RETRIES },
     },
     {
@@ -54,7 +77,9 @@ const executeRetry = async (paymentId) => {
   if (!payment) return null;
 
   try {
+    console.log("[RETRY] Creating NEW Razorpay order");
     const order = await createOrder(payment.amount);
+    console.log(`[RETRY] New Razorpay order: ${order.id}`);
 
     const orderHistory = payment.orderHistory || [];
     const existingOrderAlreadyRecorded = orderHistory.some(
@@ -98,4 +123,4 @@ const executeRetry = async (paymentId) => {
   }
 };
 
-module.exports = { scheduleRetry, executeRetry, MAX_RETRIES };
+module.exports = { scheduleRetry, executeRetry, getRetryDelayMs, MAX_RETRIES };

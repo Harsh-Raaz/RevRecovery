@@ -4,8 +4,11 @@ const Payment = require("../models/Payment");
 const Verification = require("../models/Verification");
 const { createOrder } = require("../services/paymentService");
 const { diagnosePayment } = require("../services/aiService");
-const { scheduleRetry, MAX_RETRIES } = require("../services/retryService");
-const DEMO_RETRY_DELAY_MINUTES = 1;
+const {
+  scheduleRetry,
+  getRetryDelayMs,
+  MAX_RETRIES,
+} = require("../services/retryService");
 const createPaymentOrder = async (req, res) => {
   try {
     const { amount, email } = req.body;
@@ -235,15 +238,6 @@ try {
     if (payment.retryCount >= MAX_RETRIES) {
       payment.status = "ABORTED";
       await payment.save();
-    } else if (payment.aiRecommendation?.action === "RETRY") {
-      const scheduledPayment = await scheduleRetry(
-        payment._id,
-        DEMO_RETRY_DELAY_MINUTES
-      );
-      if (scheduledPayment) {
-        payment.status = scheduledPayment.status;
-        payment.nextRetryAt = scheduledPayment.nextRetryAt;
-      }
     }
 
     res.status(200).json({
@@ -261,10 +255,88 @@ try {
   }
 };
 
+const schedulePaymentRetry = async (req, res) => {
+  try {
+    const { retryAfter, retryUnit } = req.body;
+
+    if (getRetryDelayMs(retryAfter, retryUnit) === null) {
+      return res.status(400).json({
+        success: false,
+        message: "retryAfter must be positive and retryUnit must be SECONDS, MINUTES, or HOURS",
+      });
+    }
+
+    const payment = await scheduleRetry(
+      req.params.paymentId,
+      retryAfter,
+      retryUnit
+    );
+
+    if (!payment) {
+      return res.status(409).json({
+        success: false,
+        message: "Payment is not available for retry scheduling",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Retry scheduled",
+      payment,
+    });
+  } catch (error) {
+    console.error("Schedule retry error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to schedule retry",
+    });
+  }
+};
+
+const abortRetry = async (req, res) => {
+  try {
+    const { paymentId } = req.body;
+
+    if (!paymentId) {
+      return res.status(400).json({
+        success: false,
+        message: "paymentId is required",
+      });
+    }
+
+    const payment = await Payment.findOneAndUpdate(
+      {
+        _id: paymentId,
+        status: { $ne: "SUCCESS" },
+      },
+      {
+        $set: {
+          abortRequested: true,
+          status: "ABORTED",
+          nextRetryAt: null,
+        },
+      },
+      { new: true }
+    );
+
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment record not found or already completed",
+      });
+    }
+
+    res.status(200).json({ success: true, payment });
+  } catch (error) {
+    console.error("Abort retry error:", error);
+    res.status(500).json({ success: false, message: "Failed to abort retry" });
+  }
+};
+
 const getPaymentStatus = async (req, res) => {
   try {
     const payment = await Payment.findById(req.params.paymentId).select(
-      "razorpayOrderId amount currency status recovered retryCount maxRetries nextRetryAt"
+      "razorpayOrderId amount currency status recovered retryCount maxRetries nextRetryAt aiRecommendation"
     );
 
     if (!payment) {
@@ -510,6 +582,8 @@ module.exports = {
   createPaymentOrder,
   verifyPayment,
   paymentFailed,
+  schedulePaymentRetry,
+  abortRetry,
   getPaymentStatus,
   getDashboardStats,
   testAIDiagnosis,

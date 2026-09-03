@@ -7,6 +7,11 @@ function HomePage() {
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [retryPayment, setRetryPayment] = useState(null);
+  const [retrySeconds, setRetrySeconds] = useState("");
+  const [retryMinutes, setRetryMinutes] = useState("");
+  const [retryHours, setRetryHours] = useState("");
+  const [retrySecondsRemaining, setRetrySecondsRemaining] = useState(0);
 const [verified, setVerified] = useState(false);
   const retryPollingRef = useRef(null);
   const openedRetryOrderIdRef = useRef(null);
@@ -37,6 +42,31 @@ const [verified, setVerified] = useState(false);
 }, []);
 
   useEffect(() => () => stopRetryPolling(), []);
+
+  useEffect(() => {
+    if (!retryPayment?.nextRetryAt) {
+      setRetrySecondsRemaining(0);
+      return undefined;
+    }
+
+    const updateCountdown = () => {
+      const remaining = Math.max(
+        0,
+        Math.ceil((new Date(retryPayment.nextRetryAt).getTime() - Date.now()) / 1000)
+      );
+      setRetrySecondsRemaining(remaining);
+    };
+
+    updateCountdown();
+    const timer = setInterval(updateCountdown, 1000);
+    return () => clearInterval(timer);
+  }, [retryPayment?.nextRetryAt]);
+
+  const setRetryValue = (unit, value) => {
+    setRetrySeconds(unit === "SECONDS" ? value : "");
+    setRetryMinutes(unit === "MINUTES" ? value : "");
+    setRetryHours(unit === "HOURS" ? value : "");
+  };
   const validateForm = () => {
     const newErrors = {};
 
@@ -134,6 +164,8 @@ const [verified, setVerified] = useState(false);
           reason: response.error.description || "Payment failed",
         });
 
+        setRetryPayment({ ...failure.payment, paymentId });
+
         if (failure.payment?.status === "WAITING_FOR_RETRY") {
           startRetryPolling(paymentId);
         }
@@ -153,6 +185,7 @@ const [verified, setVerified] = useState(false);
       try {
         const response = await paymentApi.getPaymentStatus(paymentId);
         const payment = response.payment;
+        setRetryPayment({ ...payment, paymentId });
 
         if (
           payment.status === "RETRYING" &&
@@ -178,6 +211,56 @@ const [verified, setVerified] = useState(false);
 
     poll();
     retryPollingRef.current = setInterval(poll, 3000);
+  };
+
+  const handleScheduleRetry = async () => {
+    if (!retryPayment) return;
+
+    const retrySelection = retrySeconds
+      ? { retryAfter: retrySeconds, retryUnit: "SECONDS" }
+      : retryMinutes
+      ? { retryAfter: retryMinutes, retryUnit: "MINUTES" }
+      : retryHours
+      ? { retryAfter: retryHours, retryUnit: "HOURS" }
+      : null;
+
+    if (!retrySelection || Number(retrySelection.retryAfter) <= 0) {
+      setMessage("Enter a positive retry time in seconds, minutes, or hours.");
+      return;
+    }
+
+    try {
+      const response = await paymentApi.scheduleRetry(
+        retryPayment.paymentId,
+        retrySelection
+      );
+      setRetryPayment({ ...response.payment, paymentId: retryPayment.paymentId });
+      setMessage("Recovery retry is scheduled.");
+      startRetryPolling(retryPayment.paymentId);
+    } catch (error) {
+      setMessage(error.response?.data?.message || "Failed to schedule retry.");
+    }
+  };
+
+  const handleAbortRetry = async () => {
+    if (!retryPayment) return;
+
+    try {
+      await paymentApi.abortRetry(retryPayment.paymentId);
+      stopRetryPolling();
+      setRetryPayment(null);
+      setRetrySecondsRemaining(0);
+      setMessage("Retry cancelled.");
+    } catch (error) {
+      setMessage(error.response?.data?.message || "Failed to cancel retry.");
+    }
+  };
+
+  const formatRetryCountdown = () => {
+    const hours = Math.floor(retrySecondsRemaining / 3600);
+    const minutes = Math.floor((retrySecondsRemaining % 3600) / 60);
+    const seconds = retrySecondsRemaining % 60;
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
   };
 
   const handleSubmit = async (e) => {
@@ -336,6 +419,65 @@ const [verified, setVerified] = useState(false);
               <span className="arrow">→</span>
             </button>
           </form>
+
+          {retryPayment && (
+            <div className="security-note">
+              {retryPayment.aiRecommendation?.customerMessage && (
+                <span>{retryPayment.aiRecommendation.customerMessage}</span>
+              )}
+              {retryPayment.status === "WAITING_FOR_RETRY" && (
+                <span>Retry in {formatRetryCountdown()}</span>
+              )}
+              <div>
+                <input
+                  aria-label="Retry after seconds"
+                  type="number"
+                  min="1"
+                  placeholder="sec"
+                  value={retrySeconds}
+                  disabled={Boolean(retryMinutes || retryHours)}
+                  onChange={(event) => setRetryValue("SECONDS", event.target.value)}
+                />
+                <span> sec </span>
+                <input
+                  aria-label="Retry after minutes"
+                  type="number"
+                  min="1"
+                  placeholder="min"
+                  value={retryMinutes}
+                  disabled={Boolean(retrySeconds || retryHours)}
+                  onChange={(event) => setRetryValue("MINUTES", event.target.value)}
+                />
+                <span> min </span>
+                <input
+                  aria-label="Retry after hours"
+                  type="number"
+                  min="1"
+                  placeholder="hr"
+                  value={retryHours}
+                  disabled={Boolean(retrySeconds || retryMinutes)}
+                  onChange={(event) => setRetryValue("HOURS", event.target.value)}
+                />
+                <span> hr </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (retrySecondsRemaining === 0 && retryPayment.status === "WAITING_FOR_RETRY") {
+                      startRetryPolling(retryPayment.paymentId);
+                    } else {
+                      handleScheduleRetry();
+                    }
+                  }}
+                  disabled={retryPayment.status === "WAITING_FOR_RETRY" && retrySecondsRemaining > 0}
+                >
+                  Retry
+                </button>
+              </div>
+              <button type="button" onClick={handleAbortRetry}>
+                Stop Retry
+              </button>
+            </div>
+          )}
 
           <div className="security-note">
             <span>🔒</span>
