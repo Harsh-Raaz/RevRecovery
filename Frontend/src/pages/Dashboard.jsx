@@ -168,15 +168,15 @@ function Dashboard() {
 
         <div className="stat-card">
           <span className="stat-label">
-            Active Recoveries
+            Total Recoveries Made
           </span>
 
           <strong>
-            {stats.activeRecoveries}
+            {stats.recoveredCount}
           </strong>
 
           <span className="stat-subtext">
-            Recovery workflows
+            Payments successfully recovered
           </span>
         </div>
 

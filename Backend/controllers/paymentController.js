@@ -520,23 +520,21 @@ const getDashboardStats = async (req, res) => {
         status: "FAILED",
       });
 
-    // Active recoveries
-    const activeRecoveries =
-      await Payment.countDocuments({
-        status: {
-          $in: [
-            "RETRYING",
-            "WAITING_FOR_RETRY",
-          ],
-        },
-      });
+    const recoveredCount = await Payment.countDocuments({
+      status: "SUCCESS",
+      recovered: true,
+    });
+
+    const totalFailedPayments = await Payment.countDocuments({
+      "failureHistory.0": { $exists: true },
+    });
 
     // Recovery rate
     const recoveryRate =
-      revenueAtRisk > 0
+      totalFailedPayments > 0
         ? Number(
             (
-              (recoveredRevenue / revenueAtRisk) *
+              (recoveredCount / totalFailedPayments) *
               100
             ).toFixed(2)
           )
@@ -558,9 +556,10 @@ const getDashboardStats = async (req, res) => {
         totalPaymentVolume,
         revenueAtRisk,
         recoveredRevenue,
+        recoveredCount,
         recoveryRate,
         failedPayments,
-        activeRecoveries,
+        totalFailedPayments,
       },
 
       recentPayments,
