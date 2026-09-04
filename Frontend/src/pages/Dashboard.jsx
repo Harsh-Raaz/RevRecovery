@@ -262,7 +262,12 @@ function Dashboard() {
                       {payment.customerAcceptedRecovery && " / Accepted"}
                       {payment.recoveryEmailSent && " / Email sent"}
                       {payment.declineReason && ` / ${payment.declineReason}`}
-                      {payment.feedback && <small>{payment.feedback}</small>}
+                      {payment.feedback && (
+                        <div className="user-feedback">
+                          <strong>Feedback from User:</strong>
+                          <span>{payment.feedback}</span>
+                        </div>
+                      )}
                     </td>
 
                   </tr>

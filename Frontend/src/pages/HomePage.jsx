@@ -465,20 +465,30 @@ const [verified, setVerified] = useState(false);
             </div>
 
             <button type="submit" className="generate-button">
-              <span>Generate Payment QR</span>
+              <span>Make the Payment</span>
               <span className="arrow">→</span>
             </button>
           </form>
 
           {retryPayment && (
-            <div className="security-note">
+            <div className="retry-scheduler">
+              <div className="retry-scheduler-header">
+                <div>
+                  <span className="retry-scheduler-eyebrow">Recovery action</span>
+                  <strong>Schedule a payment retry</strong>
+                </div>
+                <span className="retry-scheduler-status">{retryPayment.status}</span>
+              </div>
               {retryPayment.aiRecommendation?.customerMessage && (
-                <span>{retryPayment.aiRecommendation.customerMessage}</span>
+                <div className="retry-customer-message">
+                  <span>Recommended message</span>
+                  <p>{retryPayment.aiRecommendation.customerMessage}</p>
+                </div>
               )}
               {retryPayment.status === "WAITING_FOR_RETRY" && (
-                <span>Retry in {formatRetryCountdown()}</span>
+                <div className="retry-countdown">Retry in {formatRetryCountdown()}</div>
               )}
-              <div>
+              <div className="retry-scheduler-controls">
                 <input
                   aria-label="Retry after seconds"
                   type="number"
@@ -523,7 +533,7 @@ const [verified, setVerified] = useState(false);
                   Retry
                 </button>
               </div>
-              <button type="button" onClick={handleAbortRetry}>
+              <button className="retry-stop-button" type="button" onClick={handleAbortRetry}>
                 Stop Retry
               </button>
             </div>
