@@ -19,6 +19,7 @@
     "mongoose": "^9.9.3",
     "nodemailer": "^9.0.5",
     "qrcode": "^1.5.4",
-    "razorpay": "^2.9.8"
+    "razorpay": "^2.9.8",
+    "retell-sdk": "^5.64.0"
   }
 }

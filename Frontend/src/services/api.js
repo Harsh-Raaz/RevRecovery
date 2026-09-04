@@ -12,9 +12,10 @@ export const authApi = {
 };
 
 export const paymentApi = {
-  createPayment: async ({ email, amount }) => {
+  createPayment: async ({ email, phone, amount }) => {
     const response = await api.post("/payment/create-order", {
       email,
+      phone,
       amount: Number(amount),
     });
 
@@ -30,6 +31,13 @@ export const paymentApi = {
     const response = await api.post("/payment/failed", {
       razorpay_order_id,
       reason,
+    });
+
+    return response.data;
+  },
+  reportCheckoutAbandoned: async (razorpay_order_id) => {
+    const response = await api.post("/payment/checkout-abandoned", {
+      razorpay_order_id,
     });
 
     return response.data;

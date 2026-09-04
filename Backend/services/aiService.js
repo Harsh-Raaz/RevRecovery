@@ -23,7 +23,7 @@ Analyze this failed payment and determine:
 8. Risk level
 
 Possible actions:
-RETRY
+TRY_LATER
 CONTACT_CUSTOMER
 WAIT
 STOP
@@ -34,6 +34,9 @@ Rules:
 - Do not expose sensitive payment information.
 - Confidence must be between 0 and 1.
 - Recovery probability must be between 0 and 1.
+- If paymentAttempted is true, the customer attempted payment and it failed; return TRY_LATER.
+- Return CONTACT_CUSTOMER only when checkoutAbandoned is true and paymentAttempted is false.
+- If there is insufficient evidence of deliberate abandonment, return TRY_LATER.
 - Return ONLY valid JSON.
 
 Payment data:
@@ -46,7 +49,7 @@ Return exactly:
   "rootCause": "",
   "confidence": 0,
   "recoveryProbability": 0,
-  "recommendedAction": "RETRY",
+  "recommendedAction": "TRY_LATER",
   "retryAfterMinutes": 15,
   "customerMessage": "",
   "reasoning": "",

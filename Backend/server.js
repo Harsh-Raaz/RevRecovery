@@ -6,13 +6,18 @@ const mongoose = require("mongoose");
 
 const authRoutes = require("./routes/authRoutes.js");
 const paymentRoutes = require("./routes/paymentRoutes.js");
+const recoveryRoutes = require("./routes/recoveryRoutes.js");
 const { startRetryWorker } = require("./workers/retryWorker.js");
 
 const app = express();
 let retryWorker;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({
+  verify: (req, res, buffer) => {
+    req.rawBody = buffer.toString("utf8");
+  },
+}));
 
 // MongoDB connection
 mongoose
@@ -43,6 +48,7 @@ app.use("/api/auth", authRoutes);
 
 // Payment routes
 app.use("/api/payment", paymentRoutes);
+app.use("/api/recovery", recoveryRoutes);
 
 // Error handler
 app.use((err, req, res, next) => {

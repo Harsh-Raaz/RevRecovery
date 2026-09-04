@@ -209,6 +209,7 @@ function Dashboard() {
                 <th>Problem</th>
                 <th>Status</th>
                 <th>Retry Count</th>
+                <th>Recovery Call</th>
               </tr>
             </thead>
 
@@ -252,6 +253,16 @@ function Dashboard() {
 
                     <td>
                       {payment.retryCount}
+                    </td>
+
+                    <td>
+                      {payment.callStatus || "NOT_ATTEMPTED"}
+                      {payment.callOutcome && ` / ${payment.callOutcome}`}
+                      {payment.callResponse && ` / ${payment.callResponse}`}
+                      {payment.customerAcceptedRecovery && " / Accepted"}
+                      {payment.recoveryEmailSent && " / Email sent"}
+                      {payment.declineReason && ` / ${payment.declineReason}`}
+                      {payment.feedback && <small>{payment.feedback}</small>}
                     </td>
 
                   </tr>
@@ -373,7 +384,11 @@ function Dashboard() {
                 <div className="ai-item">
                   <span>Recommended Action</span>
                   <strong>
-                    {ai.action || "N/A"}
+                    {ai.action === "CONTACT_CUSTOMER"
+                      ? "CONTACT CUSTOMER"
+                      : ai.action === "TRY_LATER"
+                      ? "TRY LATER"
+                      : ai.action || "N/A"}
                   </strong>
                 </div>
 
@@ -440,6 +455,7 @@ function Dashboard() {
                 <th>Amount</th>
                 <th>Status</th>
                 <th>Recovery</th>
+                <th>Call</th>
                 <th>Date</th>
               </tr>
             </thead>
@@ -450,6 +466,13 @@ function Dashboard() {
 
                   <td>
                     {payment.email}
+                  </td>
+
+                  <td>
+                    {payment.callStatus || "NOT_ATTEMPTED"}
+                    {payment.callOutcome && ` / ${payment.callOutcome}`}
+                    {payment.callResponse && ` / ${payment.callResponse}`}
+                    {payment.recoveryEmailSent && " / Email sent"}
                   </td>
 
                   <td>

@@ -4,6 +4,7 @@ const {
   createPaymentOrder,
   verifyPayment,
   paymentFailed,
+  paymentCheckoutAbandoned,
   schedulePaymentRetry,
   abortRetry,
   getPaymentStatus,
@@ -17,6 +18,7 @@ const router = express.Router();
 router.post("/create-order", createPaymentOrder);
 router.post("/verify", verifyPayment);
 router.post("/failed", paymentFailed);
+router.post("/checkout-abandoned", paymentCheckoutAbandoned);
 router.post("/:paymentId/schedule-retry", schedulePaymentRetry);
 router.post("/abort-retry", abortRetry);
 router.get("/status/:paymentId", getPaymentStatus);

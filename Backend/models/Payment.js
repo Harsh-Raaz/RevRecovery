@@ -9,6 +9,12 @@ const paymentSchema = new mongoose.Schema(
       lowercase: true,
     },
 
+    phone: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
     amount: {
       type: Number,
       required: [true, "Amount is required"],
@@ -63,6 +69,11 @@ const paymentSchema = new mongoose.Schema(
         "EXPIRED",
       ],
       default: "PENDING",
+    },
+
+    paymentAttempted: {
+      type: Boolean,
+      default: false,
     },
         recovered: {
       type: Boolean,
@@ -122,6 +133,69 @@ const paymentSchema = new mongoose.Schema(
     incompleteEmailSent: {
       type: Boolean,
       default: false,
+    },
+
+    callStatus: {
+      type: String,
+      enum: ["NOT_ATTEMPTED", "INITIATED", "COMPLETED", "FAILED"],
+      default: "NOT_ATTEMPTED",
+    },
+
+    callId: {
+      type: String,
+      default: null,
+    },
+
+    callResponse: {
+      type: String,
+      enum: ["YES", "NO", null],
+      default: null,
+    },
+
+    customerAcceptedRecovery: {
+      type: Boolean,
+      default: false,
+    },
+
+    recoveryChannel: {
+      type: String,
+      enum: ["NONE", "CALL", "EMAIL"],
+      default: "NONE",
+    },
+
+    declineReason: {
+      type: String,
+      enum: ["price", "changed_mind", "technical_issue", "other", null],
+      default: null,
+    },
+
+    feedback: {
+      type: String,
+      default: "",
+    },
+
+    callOutcome: {
+      type: String,
+      enum: [
+        "consented",
+        "declined",
+        "already_paid",
+        "opted_out",
+        "voicemail",
+        "unreachable",
+        null,
+      ],
+      default: null,
+    },
+
+    recoveryEmailSent: {
+      type: Boolean,
+      default: false,
+    },
+
+    processedWebhookEvents: {
+      type: [String],
+      default: [],
     },
 
     lastReminderAt: {

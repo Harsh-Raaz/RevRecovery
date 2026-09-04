@@ -47,6 +47,24 @@ const sendVerificationEmail = async (email, verificationUrl) => {
   });
 };
 
+const sendRecoveryEmail = async ({ email, payment, paymentUrl }) => {
+  await transporter.sendMail({
+    from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+    to: email,
+    subject: "Complete your payment - AI Revenue Recovery",
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto;">
+        <h2>Complete your payment</h2>
+        <p>Your payment of ${payment.currency || "INR"} ${payment.amount} is ready to complete.</p>
+        <a href="${paymentUrl}" style="display: inline-block; padding: 12px 20px; background-color: #111827; color: #ffffff; text-decoration: none; border-radius: 6px;">
+          Continue Payment
+        </a>
+      </div>
+    `,
+  });
+};
+
 module.exports = {
   sendVerificationEmail,
+  sendRecoveryEmail,
 };

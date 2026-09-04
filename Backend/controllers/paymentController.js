@@ -9,9 +9,10 @@ const {
   getRetryDelayMs,
   MAX_RETRIES,
 } = require("../services/retryService");
+const { makeRecoveryCall } = require("../services/retellService");
 const createPaymentOrder = async (req, res) => {
   try {
-    const { amount, email } = req.body;
+    const { amount, email, phone } = req.body;
 
     if (!email) {
       return res.status(400).json({
@@ -25,6 +26,15 @@ const createPaymentOrder = async (req, res) => {
         success: false,
         message: "Amount is required",
       });
+    }
+
+    if (!phone || !String(phone).trim()) {
+      return res.status(400).json({ success: false, message: "Phone number is required" });
+    }
+
+    const normalizedPhone = String(phone).trim();
+    if (!/^\+?[\d\s().-]{7,20}$/.test(normalizedPhone)) {
+      return res.status(400).json({ success: false, message: "Invalid phone number" });
     }
 
     const normalizedEmail = String(email).trim().toLowerCase();
@@ -45,6 +55,7 @@ const createPaymentOrder = async (req, res) => {
     // MongoDB mein payment save karo
     const payment = await Payment.create({
       email: normalizedEmail,
+      phone: normalizedPhone,
       amount: Number(amount),
       currency: order.currency,
       razorpayOrderId: order.id,
@@ -184,6 +195,7 @@ const paymentFailed = async (req, res) => {
     }
 
     payment.status = "FAILED";
+    payment.paymentAttempted = true;
     payment.failureReason = reason || "Payment failed";
 
     payment.failureHistory.push({
@@ -202,6 +214,10 @@ try {
   const diagnosis = await diagnosePayment(
     payment.toObject()
   );
+
+    if (payment.paymentAttempted) {
+      diagnosis.recommendedAction = "TRY_LATER";
+    }
 
     payment.aiRecommendation = {
     classification: diagnosis.diagnosis,
@@ -228,6 +244,27 @@ try {
     payment.aiRecommendation
   );
 
+  if (
+    diagnosis.recommendedAction === "CONTACT_CUSTOMER" &&
+    payment.phone &&
+    !payment.abortRequested
+  ) {
+    try {
+      const call = await makeRecoveryCall({
+        phone: payment.phone,
+        paymentId: payment._id,
+      });
+      payment.callId = call.call_id || null;
+      payment.callStatus = "INITIATED";
+      payment.recoveryChannel = "CALL";
+      await payment.save();
+    } catch (error) {
+      payment.callStatus = "FAILED";
+      await payment.save();
+      console.error("Automatic recovery call error:", error.message);
+    }
+  }
+
 } catch (error) {
   console.error(
     "Gemini AI diagnosis failed:",
@@ -251,6 +288,79 @@ try {
     res.status(500).json({
       success: false,
       message: "Failed to save payment failure",
+    });
+  }
+};
+
+const paymentCheckoutAbandoned = async (req, res) => {
+  try {
+    const { razorpay_order_id } = req.body;
+    if (!razorpay_order_id) {
+      return res.status(400).json({
+        success: false,
+        message: "Razorpay order ID is required",
+      });
+    }
+
+    const payment = await Payment.findOne({ razorpayOrderId: razorpay_order_id });
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment record not found",
+      });
+    }
+
+    if (payment.paymentAttempted || payment.status !== "PENDING") {
+      return res.status(200).json({ success: true, payment });
+    }
+
+    payment.failureReason = "Checkout abandoned without payment attempt";
+    await payment.save();
+
+    const diagnosis = await diagnosePayment({
+      ...payment.toObject(),
+      paymentAttempted: false,
+      checkoutAbandoned: true,
+    });
+
+    payment.aiRecommendation = {
+      classification: diagnosis.diagnosis,
+      rootCause: diagnosis.rootCause,
+      action: diagnosis.recommendedAction,
+      confidence: diagnosis.confidence,
+      recoveryProbability: diagnosis.recoveryProbability,
+      retryAfterMinutes: diagnosis.retryAfterMinutes,
+      customerMessage: diagnosis.customerMessage,
+      reason: diagnosis.reasoning,
+      riskLevel: diagnosis.riskLevel,
+      diagnosedAt: new Date(),
+    };
+    payment.aiDiagnosisHistory.push(payment.aiRecommendation.toObject());
+    await payment.save();
+
+    if (diagnosis.recommendedAction === "CONTACT_CUSTOMER" && payment.phone) {
+      try {
+        const call = await makeRecoveryCall({
+          phone: payment.phone,
+          paymentId: payment._id,
+        });
+        payment.callId = call.call_id || null;
+        payment.callStatus = "INITIATED";
+        payment.recoveryChannel = "CALL";
+        await payment.save();
+      } catch (error) {
+        payment.callStatus = "FAILED";
+        await payment.save();
+        console.error("Abandoned checkout recovery call error:", error.message);
+      }
+    }
+
+    return res.status(200).json({ success: true, payment });
+  } catch (error) {
+    console.error("Checkout abandonment error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to record checkout abandonment",
     });
   }
 };
@@ -400,6 +510,7 @@ const testFailedPayment = async (req, res) => {
   try {
     const testPayment = await Payment.create({
       email: "test@example.com",
+      phone: "+919876543210",
       amount: 500,
       currency: "INR",
       razorpayOrderId: `test_order_${Date.now()}`,
@@ -545,7 +656,7 @@ const getDashboardStats = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(10)
       .select(
-  "email amount status recovered failureReason retryCount createdAt completedAt aiRecommendation"
+  "email phone amount status recovered failureReason retryCount createdAt completedAt aiRecommendation callStatus callId callResponse customerAcceptedRecovery recoveryChannel declineReason feedback callOutcome recoveryEmailSent"
 );
 
     res.status(200).json({
@@ -581,6 +692,7 @@ module.exports = {
   createPaymentOrder,
   verifyPayment,
   paymentFailed,
+  paymentCheckoutAbandoned,
   schedulePaymentRetry,
   abortRetry,
   getPaymentStatus,

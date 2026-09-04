@@ -3,6 +3,7 @@ import "../App.css";
 import { authApi, paymentApi } from "../services/api";
 function HomePage() {
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [amount, setAmount] = useState("");
   const [errors, setErrors] = useState({});
   const [message, setMessage] = useState("");
@@ -84,6 +85,10 @@ const [verified, setVerified] = useState(false);
       newErrors.amount = "Amount must be greater than ₹0";
     }
 
+    if (!phone.trim()) {
+      newErrors.phone = "Phone number is required";
+    }
+
     setErrors(newErrors);
 
     return Object.keys(newErrors).length === 0;
@@ -118,6 +123,7 @@ const [verified, setVerified] = useState(false);
       return;
     }
 
+    let paymentAttempted = false;
     const options = {
       key: import.meta.env.VITE_RAZORPAY_KEY_ID,
       amount: order.amount,
@@ -147,14 +153,22 @@ const [verified, setVerified] = useState(false);
         }
       },
       modal: {
-        ondismiss: function () {
+        ondismiss: async function () {
           setMessage("Payment cancelled.");
+          if (!paymentAttempted) {
+            try {
+              await paymentApi.reportCheckoutAbandoned(order.id);
+            } catch (error) {
+              console.error("Failed to record checkout abandonment:", error);
+            }
+          }
         },
       },
     };
 
     const razorpay = new window.Razorpay(options);
     razorpay.on("payment.failed", async function (response) {
+      paymentAttempted = true;
       console.error("Payment failed:", response.error);
       setMessage(response.error.description || "Payment failed.");
 
@@ -176,6 +190,23 @@ const [verified, setVerified] = useState(false);
 
     razorpay.open();
   };
+
+  useEffect(() => {
+    const paymentId = new URLSearchParams(window.location.search).get("paymentId");
+    if (!paymentId) return;
+
+    paymentApi.getPaymentStatus(paymentId)
+      .then((response) => {
+        if (response.success && response.payment?.status !== "SUCCESS") {
+          setRetryPayment({ ...response.payment, paymentId });
+          openCheckout(response.payment.order, paymentId);
+        }
+      })
+      .catch((error) => {
+        console.error("Recovery payment load error:", error);
+        setMessage("Unable to load the recovery payment.");
+      });
+  }, []);
 
   const startRetryPolling = (paymentId) => {
     stopRetryPolling();
@@ -283,6 +314,7 @@ const [verified, setVerified] = useState(false);
     // Step 1: Backend se Razorpay order create
     const response = await paymentApi.createPayment({
       email,
+      phone,
       amount: Number(amount),
     });
 
@@ -378,6 +410,24 @@ const [verified, setVerified] = useState(false);
               {errors.email && (
                 <span className="error-message">{errors.email}</span>
               )}
+            </div>
+
+            <div className="input-group">
+              <label htmlFor="phone">Customer phone number</label>
+              <div className={`input-wrapper ${errors.phone ? "input-error" : ""}`}>
+                <span className="input-icon">+</span>
+                <input
+                  id="phone"
+                  type="tel"
+                  placeholder="91 9876543210"
+                  value={phone}
+                  onChange={(e) => {
+                    setPhone(e.target.value);
+                    if (errors.phone) setErrors((prev) => ({ ...prev, phone: "" }));
+                  }}
+                />
+              </div>
+              {errors.phone && <span className="error-message">{errors.phone}</span>}
             </div>
 
             <div className="input-group">
