@@ -132,7 +132,7 @@ const verifyPayment = async (req, res) => {
     // Successful payment ko database mein update karo
     const existingPayment = await Payment.findOne({
       razorpayOrderId: razorpay_order_id,
-    }).select("retryCount");
+    }).select("retryCount recoveryEmailSent customerAcceptedRecovery");
 
     const payment = await Payment.findOneAndUpdate(
       { razorpayOrderId: razorpay_order_id },
@@ -140,7 +140,10 @@ const verifyPayment = async (req, res) => {
         razorpayPaymentId: razorpay_payment_id,
         razorpaySignature: razorpay_signature,
         status: "SUCCESS",
-        recovered: (existingPayment?.retryCount || 0) > 0,
+        recovered:
+          (existingPayment?.retryCount || 0) > 0 ||
+          existingPayment?.recoveryEmailSent === true ||
+          existingPayment?.customerAcceptedRecovery === true,
         completedAt: new Date(),
       },
       {
