@@ -446,10 +446,10 @@ function Dashboard() {
             <thead>
               <tr>
                 <th>Customer</th>
-                <th>Status</th>
+                <th>Call Status</th>
                 <th>Amount</th>
                 <th>Recovery</th>
-                <th>Call</th>
+                <th>Status</th>
                 <th>Date</th>
               </tr>
             </thead>
