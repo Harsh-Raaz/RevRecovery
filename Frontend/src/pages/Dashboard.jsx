@@ -73,7 +73,7 @@ function Dashboard() {
             </div>
 
             <span>
-              AI Revenue Recovery
+              REV Recovery
             </span>
           </div>
 
@@ -418,17 +418,6 @@ function Dashboard() {
 
               </div>
 
-              <div className="ai-message">
-
-                <span>Customer Message</span>
-
-                <p>
-                  {ai.customerMessage ||
-                    "No customer message generated."}
-                </p>
-
-              </div>
-
             </div>
           );
         })}
@@ -457,8 +446,8 @@ function Dashboard() {
             <thead>
               <tr>
                 <th>Customer</th>
-                <th>Amount</th>
                 <th>Status</th>
+                <th>Amount</th>
                 <th>Recovery</th>
                 <th>Call</th>
                 <th>Date</th>

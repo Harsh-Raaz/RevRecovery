@@ -36,6 +36,17 @@ const paymentSchema = new mongoose.Schema(
       type: String,
     },
 
+    paymentMethod: {
+      type: String,
+      enum: ["card", "netbanking", "wallet", "upi", "emi", "paylater", null],
+      default: null,
+    },
+
+    paymentBank: {
+      type: String,
+      default: null,
+    },
+
     orderHistory: [
       {
         orderId: String,

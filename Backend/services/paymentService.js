@@ -28,6 +28,11 @@ const createOrder = async (amount) => {
   }
 };
 
+const fetchPayment = async (paymentId) => {
+  return razorpay.payments.fetch(paymentId);
+};
+
 module.exports = {
   createOrder,
+  fetchPayment,
 };

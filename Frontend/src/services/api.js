@@ -27,10 +27,12 @@ export const paymentApi = {
 
     return response.data;
   },
-  reportFailure: async ({ razorpay_order_id, reason }) => {
+  reportFailure: async ({ razorpay_order_id, reason, payment_method, payment_id }) => {
     const response = await api.post("/payment/failed", {
       razorpay_order_id,
       reason,
+      payment_method,
+      payment_id,
     });
 
     return response.data;

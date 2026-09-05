@@ -99,6 +99,8 @@ const executeRetry = async (paymentId) => {
         $set: {
           razorpayOrderId: order.id,
           currency: order.currency,
+          paymentMethod: payment.paymentMethod,
+          paymentBank: payment.paymentBank,
         },
         $inc: { retryCount: 1 },
         $push: { orderHistory: { $each: newHistoryEntries } },

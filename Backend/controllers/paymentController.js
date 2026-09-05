@@ -2,7 +2,7 @@ const crypto = require("crypto");
 
 const Payment = require("../models/Payment");
 const Verification = require("../models/Verification");
-const { createOrder } = require("../services/paymentService");
+const { createOrder, fetchPayment } = require("../services/paymentService");
 const { diagnosePayment } = require("../services/aiService");
 const {
   scheduleRetry,
@@ -177,6 +177,8 @@ const paymentFailed = async (req, res) => {
     const {
       razorpay_order_id,
       reason,
+      payment_method,
+      payment_id,
     } = req.body;
 
     if (!razorpay_order_id) {
@@ -201,6 +203,31 @@ const paymentFailed = async (req, res) => {
     payment.paymentAttempted = true;
     payment.failureReason = reason || "Payment failed";
 
+    console.log("[FAILURE BACKEND] payment_method received:", payment_method);
+    let resolvedPaymentMethod = payment_method;
+    if (payment_id && !payment.paymentBank) {
+      try {
+        const razorpayPayment = await fetchPayment(payment_id);
+        resolvedPaymentMethod = resolvedPaymentMethod || razorpayPayment.method;
+        payment.paymentBank = razorpayPayment.bank || payment.paymentBank;
+        console.log(
+          "[FAILURE BACKEND] Razorpay payment method fetched:",
+          resolvedPaymentMethod
+        );
+      } catch (error) {
+        console.error(
+          "[FAILURE BACKEND] Failed to fetch Razorpay payment:",
+          error.message
+        );
+      }
+    }
+
+    console.log(
+      "[FAILURE BACKEND] Saving paymentMethod:",
+      resolvedPaymentMethod || payment.paymentMethod
+    );
+    payment.paymentMethod = resolvedPaymentMethod || payment.paymentMethod;
+
     payment.failureHistory.push({
       // retryCount counts retries only; attempt includes the original payment.
       attempt: payment.retryCount + 1,
@@ -211,6 +238,11 @@ const paymentFailed = async (req, res) => {
     payment.lastAttemptAt = new Date();
 
     await payment.save();
+
+    console.log(
+      "[FAILURE BACKEND] Saved paymentMethod:",
+      payment.paymentMethod
+    );
 
 
 try {
@@ -449,8 +481,10 @@ const abortRetry = async (req, res) => {
 const getPaymentStatus = async (req, res) => {
   try {
     const payment = await Payment.findById(req.params.paymentId).select(
-      "razorpayOrderId amount currency status recovered retryCount maxRetries nextRetryAt aiRecommendation"
+      "razorpayOrderId amount currency status recovered retryCount maxRetries nextRetryAt aiRecommendation paymentMethod paymentBank"
     );
+
+    console.log("[STATUS] paymentMethod from MongoDB:", payment?.paymentMethod);
 
     if (!payment) {
       return res.status(404).json({

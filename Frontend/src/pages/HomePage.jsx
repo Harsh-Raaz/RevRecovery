@@ -117,10 +117,70 @@ const [verified, setVerified] = useState(false);
   }
 };
 
-  const openCheckout = (order, paymentId) => {
+  const formatPaymentMethod = (method) => {
+    const labels = {
+      card: "Card",
+      upi: "UPI",
+      netbanking: "Netbanking",
+      wallet: "Wallet",
+      emi: "EMI",
+      paylater: "Pay Later",
+    };
+
+    return labels[method] || "Unknown";
+  };
+
+  const formatRetryPaymentMethod = (method, bank) =>
+    `${formatPaymentMethod(method)}${method === "netbanking" && bank ? ` (${bank})` : ""}`;
+
+  const openCheckout = (order, paymentId, paymentMethod, paymentBank) => {
     if (!window.Razorpay) {
       setMessage("Razorpay Checkout failed to load. Please refresh the page.");
       return;
+    }
+
+    console.log("[RETRY] Previous payment method:", paymentMethod);
+    const supportedPaymentMethods = new Set([
+      "card",
+      "upi",
+      "netbanking",
+      "wallet",
+      "emi",
+      "paylater",
+    ]);
+    const checkoutConfig = paymentMethod
+  ? {
+      display: {
+        blocks: {
+          preferred: {
+            name: "Previous payment method",
+            instruments: [
+              paymentMethod === "netbanking" && paymentBank
+                ? {
+                    method: "netbanking",
+                    banks: [paymentBank],
+                  }
+                : {
+                    method: paymentMethod,
+                  },
+            ],
+          },
+        },
+
+        sequence: ["block.preferred"],
+
+        preferences: {
+          show_default_blocks: true,
+        },
+      },
+    }
+  : null;
+
+    if (checkoutConfig) {
+      console.log(
+        "[RETRY] Opening Checkout with preferred payment method:",
+        paymentMethod
+      );
     }
 
     let paymentAttempted = false;
@@ -132,6 +192,7 @@ const [verified, setVerified] = useState(false);
       description: "Payment",
       order_id: order.id,
       prefill: { email },
+      ...(checkoutConfig ? { config: checkoutConfig } : {}),
       theme: { color: "#2563eb" },
       handler: async function (razorpayResponse) {
         try {
@@ -142,11 +203,22 @@ const [verified, setVerified] = useState(false);
             razorpay_signature: razorpayResponse.razorpay_signature,
           });
 
-          setMessage(
-            verification.success
-              ? "Payment successful and verified."
-              : "Payment verification failed."
-          );
+          if (verification.success) {
+            stopRetryPolling();
+            setRetryPayment((currentPayment) =>
+              currentPayment
+                ? {
+                    ...currentPayment,
+                    ...verification.payment,
+                    paymentId: currentPayment.paymentId,
+                    status: "SUCCESS",
+                  }
+                : currentPayment
+            );
+            setMessage("Payment successful and verified.");
+          } else {
+            setMessage("Payment verification failed.");
+          }
         } catch (error) {
           console.error("Payment verification error:", error);
           setMessage("Payment verification failed.");
@@ -169,15 +241,23 @@ const [verified, setVerified] = useState(false);
     const razorpay = new window.Razorpay(options);
     razorpay.on("payment.failed", async function (response) {
       paymentAttempted = true;
+      console.log("[FAILURE] Full Razorpay failure response:", response);
+      console.log("[FAILURE] Razorpay method:", response?.error?.method);
       console.error("Payment failed:", response.error);
       setMessage(response.error.description || "Payment failed.");
 
       try {
+        const paymentMethod = response?.error?.method || null;
+        const paymentIdFromFailure = response?.error?.metadata?.payment_id || null;
+        console.log("[FAILURE] Sending payment_method:", paymentMethod);
         const failure = await paymentApi.reportFailure({
           razorpay_order_id: order.id,
           reason: response.error.description || "Payment failed",
+          payment_method: paymentMethod,
+          payment_id: paymentIdFromFailure,
         });
 
+        console.log("[FAILURE FRONTEND] Saved payment:", failure.payment);
         setRetryPayment({ ...failure.payment, paymentId });
 
         if (failure.payment?.status === "WAITING_FOR_RETRY") {
@@ -199,7 +279,7 @@ const [verified, setVerified] = useState(false);
       .then((response) => {
         if (response.success && response.payment?.status !== "SUCCESS") {
           setRetryPayment({ ...response.payment, paymentId });
-          openCheckout(response.payment.order, paymentId);
+          openCheckout(response.payment.order, paymentId, response.payment.paymentMethod, response.payment.paymentBank);
         }
       })
       .catch((error) => {
@@ -216,6 +296,7 @@ const [verified, setVerified] = useState(false);
       try {
         const response = await paymentApi.getPaymentStatus(paymentId);
         const payment = response.payment;
+        console.log("[POLL] paymentMethod received:", payment.paymentMethod);
         setRetryPayment({ ...payment, paymentId });
 
         if (
@@ -226,8 +307,15 @@ const [verified, setVerified] = useState(false);
         ) {
           openedRetryOrderIdRef.current = payment.order.id;
           stopRetryPolling();
-          setMessage(`Opening retry #${payment.retryCount}...`);
-          openCheckout(payment.order, paymentId);
+          setMessage(
+            `Retrying with previous payment method: ${formatRetryPaymentMethod(payment.paymentMethod, payment.paymentBank)}`
+          );
+          openCheckout(
+            payment.order,
+            paymentId,
+            payment.paymentMethod,
+            payment.paymentBank
+          );
           return;
         }
 
@@ -341,7 +429,7 @@ const [verified, setVerified] = useState(false);
       <main className="payment-container">
         <div className="brand">
           <div className="brand-icon">₹</div>
-          <span>AI Revenue Recovery</span>
+          <span>REV Retriever</span>
         </div>
 
         <section className="payment-card">
@@ -470,7 +558,14 @@ const [verified, setVerified] = useState(false);
             </button>
           </form>
 
-          {retryPayment && (
+          {retryPayment?.aiRecommendation?.customerMessage && (
+            <div className="retry-customer-message homepage-customer-message">
+              <span>Customer Message</span>
+              <p>{retryPayment.aiRecommendation.customerMessage}</p>
+            </div>
+          )}
+
+          {retryPayment && retryPayment.status !== "SUCCESS" && (
             <div className="retry-scheduler">
               <div className="retry-scheduler-header">
                 <div>
@@ -479,10 +574,12 @@ const [verified, setVerified] = useState(false);
                 </div>
                 <span className="retry-scheduler-status">{retryPayment.status}</span>
               </div>
-              {retryPayment.aiRecommendation?.customerMessage && (
-                <div className="retry-customer-message">
-                  <span>Recommended message</span>
-                  <p>{retryPayment.aiRecommendation.customerMessage}</p>
+              {retryPayment.paymentMethod && (
+                <div>
+                  Previous payment method: {formatRetryPaymentMethod(
+                    retryPayment.paymentMethod,
+                    retryPayment.paymentBank
+                  )}
                 </div>
               )}
               {retryPayment.status === "WAITING_FOR_RETRY" && (
